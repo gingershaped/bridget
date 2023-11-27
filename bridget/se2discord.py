@@ -46,6 +46,8 @@ class SEToDiscordForwarder:
     async def onMessage(self, event: MessageEvent):
         if event.user_id == self.userId:
             return
+        if event.content.startswith("\u200d"):
+            return
         converted = self.converter.convert(BeautifulSoup(event.content, features="lxml"))
         if converted is None:
             return

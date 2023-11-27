@@ -32,7 +32,7 @@ class DeleteMessageAction(Action):
     messageInfo: BridgedMessage
 
 class DiscordToSEForwarder:
-    def __init__(self, room: Room, client: Client, engine: AIOEngine, guild: Guild, channel: TextChannel, roleSymbols: dict[int, str]):
+    def __init__(self, room: Room, client: Client, engine: AIOEngine, guild: Guild, channel: TextChannel, roleSymbols: dict[int, str], ignore: list[int]):
         self.queue: Queue[Action] = Queue()
         self.room = room
         self.engine = engine
@@ -40,6 +40,7 @@ class DiscordToSEForwarder:
         self.guild = guild
         self.channel = channel
         self.roleSymbols = roleSymbols
+        self.ignore = ignore
         self.converter = Chatifier(guild)
 
         self.client.event(self.on_message)
@@ -95,6 +96,7 @@ class DiscordToSEForwarder:
             or message.channel != self.channel
             or message.author.discriminator == "0000" # big brain time
             or not isinstance(message.author, Member)
+            or message.author.id in self.ignore
         ):
             return
         await self.queue.put(SendMessageAction(

@@ -15,6 +15,7 @@ class DualBridge(TypedDict):
     channel: int
     room: int
     roleIcons: dict[int, str]
+    ignore: list[int]
 
 class SingleBridge(TypedDict):
     hook: str

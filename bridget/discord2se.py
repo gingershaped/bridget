@@ -63,7 +63,7 @@ class DiscordToSEForwarder:
         if user.bot:
             symbols += "⚙"
         for role in user.roles:
-            symbols += self.roleSymbols.get(role.id, "")
+            symbols += self.roleSymbols.get(str(role.id), "")
         if len(symbols):
             symbols = " " + symbols
         return f"[{user.display_name}{symbols}]"

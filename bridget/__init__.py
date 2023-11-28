@@ -35,6 +35,7 @@ class BridgetClient(Client):
         self.logger = getLogger("DiscordClient")
 
         self.tree = CommandTree(self)
+        self.converter = Discordifier()
         self.forwarders: dict[int, DiscordToSEForwarder] = {}
 
         self.tree.command(name="queued", description="Check number of queued messages")(self.queueSizeCommand)
@@ -96,7 +97,9 @@ class BridgetClient(Client):
 
         await interaction.followup.send(embed=Embed(
                 title=roomInfo["name"],
-                description=roomInfo["description"],
+                description=self.converter.convert(
+                    BeautifulSoup(roomInfo["description"], features="lxml")
+                ),
                 url=f"https://chat.stackexchange.com/rooms/{forwarder.room.roomID}",
             ).add_field(
                 name="In room", value=", ".join(

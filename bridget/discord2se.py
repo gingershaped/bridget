@@ -1,15 +1,18 @@
+from typing import Optional, TYPE_CHECKING
 from datetime import datetime
-from typing import Optional
 from logging import getLogger
-from asyncio import Queue
+from asyncio import Queue, Lock, TaskGroup, gather, get_event_loop, sleep
 from dataclasses import dataclass
 from aiohttp import ClientSession
+
+import json
 
 from discord import Client, Guild, Intents, Member, Message, RawMessageDeleteEvent, RawMessageUpdateEvent, TextChannel, User, Webhook
 from odmantic import AIOEngine
 from sechat import Room
+if TYPE_CHECKING:
+    from bridget import BridgetClient
 from bridget.chatifier import Chatifier
-
 from bridget.models import BridgedMessage
 
 @dataclass
@@ -31,9 +34,56 @@ class EditMessageAction(Action):
 class DeleteMessageAction(Action):
     messageInfo: BridgedMessage
 
+class WhosTyping:
+    def __init__(self, client: "BridgetClient", roomId: int, channelId: int):
+        self.logger = getLogger("WhosTyping").getChild(str(roomId))
+        self.client = client
+        self.roomId = roomId
+        self.channelId = channelId
+        self.lock = Lock()
+        self.typing: dict[str, datetime] = {}
+
+        self.client.signals.signal("typing").connect(self.on_typing)
+        self.client.signals.signal("message").connect(self.on_message)
+
+    async def on_typing(self, sender, channel: TextChannel, user: Member, started: datetime):
+        if not channel.id == self.channelId:
+            return
+        self.logger.info(f"Got typing notif for {user}")
+        async with self.lock:
+            self.typing[user.display_name] = datetime.now()
+
+    async def on_message(self, sender, message: Message):
+        if (
+            message.channel.id != self.channelId
+            or message.author.discriminator == "0000" # big brain time
+            or not isinstance(message.author, Member)
+            or message.author.display_name not in self.typing
+        ):
+            return
+        async with self.lock:
+            self.typing.pop(message.author.display_name)
+
+    async def run(self):
+        async with ClientSession() as session:
+            async with session.ws_connect("wss://rydwolf.xyz/whos_typing") as socket:
+                await socket.send_str(f"bridge\n{self.roomId}")
+                self.logger.info("Connected")
+                while True:
+                    async with self.lock:
+                        now = datetime.now()
+                        msg = "\n".join(
+                            json.dumps(user) for user, time in self.typing.items() if (now - time).seconds <= 10
+                        )
+                        if len(msg):
+                            await socket.send_str("\n" + msg)
+                    await sleep(0.5)
+
 class DiscordToSEForwarder:
-    def __init__(self, room: Room, client: Client, engine: AIOEngine, guild: Guild, channel: TextChannel, roleSymbols: dict[int, str], ignore: list[int]):
-        self.queue: Queue[Action] = Queue()
+    def __init__(self, room: Room, client: "BridgetClient", engine: AIOEngine, guild: Guild, channel: TextChannel, roleSymbols: dict[str, str], ignore: list[int]):
+        self.sendQueue: Queue[SendMessageAction] = Queue()
+        self.editQueue: Queue[EditMessageAction] = Queue()
+        self.deleteQueue: Queue[DeleteMessageAction] = Queue()
         self.room = room
         self.engine = engine
         self.client = client
@@ -42,10 +92,11 @@ class DiscordToSEForwarder:
         self.roleSymbols = roleSymbols
         self.ignore = ignore
         self.converter = Chatifier(guild)
+        self.typing = WhosTyping(client, self.room.roomID, self.channel.id)
 
-        self.client.event(self.on_message)
-        self.client.event(self.on_message_edit)
-        self.client.event(self.on_message_delete)
+        self.client.signals.signal("message").connect(self.on_message)
+        self.client.signals.signal("message_edit").connect(self.on_message_edit)
+        self.client.signals.signal("message_delete").connect(self.on_message_delete)
 
     def canModify(self, dt: datetime):
         # we use 2 minutes instead of 2.5 because any number of things may intervene
@@ -68,20 +119,20 @@ class DiscordToSEForwarder:
             symbols = " " + symbols
         return f"[{user.display_name}{symbols}]"
 
-    async def prepareMessage(self, message: Message):
+    async def prepareMessage(self, message: Message, note: str = ""):
         assert isinstance(message.author, Member)
         content = self.converter.convert(message.content)
         if content.count("\n") == 0:
             for attachment in message.attachments:
                 content += f" [{attachment.filename}]({attachment.url})"
-        prefix = self.prefix(message.author)
+        prefix = note + self.prefix(message.author)
         reply = ""
         if message.reference is not None and message.reference.message_id is not None:
             seMessage = await self.getSEByDiscord(message.reference.message_id)
             if seMessage is not None:
                 reply = f":{seMessage.chatIdent}"
             elif content.count("\n") == 0:
-                reply = f"[[⤷]({message.reference.jump_url})]"
+                reply = f"[⤷]({message.reference.jump_url})"
         if content.startswith("    "):
             content = f"    {prefix}\n{content}"
         elif content.startswith("> "):
@@ -90,7 +141,7 @@ class DiscordToSEForwarder:
             content = f"{reply} {self.prefix(message.author)} {content}"
         return content
 
-    async def on_message(self, message: Message):
+    async def on_message(self, sender, message: Message):
         if (
             message.guild != self.guild
             or message.channel != self.channel
@@ -99,24 +150,28 @@ class DiscordToSEForwarder:
             or message.author.id in self.ignore
         ):
             return
-        await self.queue.put(SendMessageAction(
+        await self.sendQueue.put(SendMessageAction(
             message, await self.prepareMessage(message)
         ))
 
-    async def on_message_edit(self, before: Message, after: Message):
+    async def on_message_edit(self, sender, before: Message, after: Message):
         if before.content != after.content:
             if (messageInfo := await self.getSEByDiscord(before.id)) is not None:
-                await self.queue.put(EditMessageAction(messageInfo, await self.prepareMessage(after)))
+                await self.editQueue.put(EditMessageAction(messageInfo, await self.prepareMessage(after)))
 
-    async def on_message_delete(self, message: Message):
+    async def on_message_delete(self, sender, message: Message):
         if (messageInfo := await self.getSEByDiscord(message.id)) is not None:
-            await self.queue.put(DeleteMessageAction(messageInfo))
-        
-    async def run(self):
-        # magic queue fuckery to ensure messages are sent in order
+            await self.deleteQueue.put(DeleteMessageAction(messageInfo))
+
+    async def sendTask(self):
         while True:
-            item = await self.queue.get()
-            if isinstance(item, SendMessageAction):
+            await self.editQueue.join()
+            item = await self.sendQueue.get()
+            if len(item.message) > 200 and item.message.count("\n") == 0:
+                # not today
+                await item.discordMessage.add_reaction("📏")
+            else:
+                sendStarted = datetime.now()
                 messageId = await self.room.send(item.message)
                 if messageId is not None:
                     await self.engine.save(BridgedMessage(
@@ -126,18 +181,42 @@ class DiscordToSEForwarder:
                         discordUser=item.discordMessage.author.id,
                         recievedAt=datetime.now()
                     ))
+                    if (datetime.now() - sendStarted).seconds >= 10:
+                        notif = await self.channel.send(
+                            "Ratelimit is too high! Forwarding from Discord to SE has been paused for two minutes."
+                        )
+                        await sleep(120)
+                        await notif.edit(content="Forwarding resumed.", delete_after=30)
                 else:
                     await item.discordMessage.add_reaction("❌")
-            elif isinstance(item, EditMessageAction):
-                if not self.canModify(item.messageInfo.recievedAt):
-                    await self.room.reply(item.messageInfo.chatIdent, "Message was edited:")
-                    item.messageInfo.chatIdent = await self.room.send(item.message)
-                    await self.engine.save(item.messageInfo)
-                else:
-                    await self.room.edit(item.messageInfo.chatIdent, item.message)
-            elif isinstance(item, DeleteMessageAction):
-                if not self.canModify(item.messageInfo.recievedAt):
-                    await self.room.reply(item.messageInfo.chatIdent, "Message was deleted.")
-                else:
-                    await self.room.delete(item.messageInfo.chatIdent)
-                await self.engine.delete(item.messageInfo)
+            self.sendQueue.task_done()
+     
+    async def editTask(self):
+        while True:
+            item = await self.editQueue.get()
+            if not self.canModify(item.messageInfo.recievedAt):
+                message = await self.channel.get_partial_message(item.messageInfo.discordIdent).fetch()
+                await message.reply("Edit ignored due to edit window expiring, sorry!")
+            else:
+                await self.room.edit(item.messageInfo.chatIdent, item.message)
+            self.editQueue.task_done()
+    
+    async def sendNotification(self, target: int, message: str):
+        await self.sendQueue.join()
+        await self.room.reply(target, message)
+
+    async def deleteTask(self):
+        while True:
+            item = await self.deleteQueue.get()
+            if not self.canModify(item.messageInfo.recievedAt):
+                get_event_loop().create_task(self.sendNotification(item.messageInfo.chatIdent, "Message was deleted."))
+            else:
+                await self.room.delete(item.messageInfo.chatIdent)
+            await self.engine.delete(item.messageInfo)
+            self.deleteQueue.task_done()
+
+    async def run(self):
+        async with TaskGroup() as group:
+            group.create_task(self.sendTask())
+            group.create_task(self.editTask())
+            group.create_task(self.typing.run())

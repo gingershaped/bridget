@@ -60,7 +60,7 @@ class SEToDiscordForwarder:
             embeds = []
             content = converted
         view = MISSING
-        if event.parent_id is not None:
+        if event.parent_id is not None and event.show_parent:
             repliedMessageInfo = await self.getDiscordBySE(event.parent_id)
             if repliedMessageInfo is None:
                 embeds.append(await self.getReplyEmbed(event.parent_id))

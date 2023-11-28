@@ -1,13 +1,15 @@
-from asyncio import Task, get_event_loop
+from typing import Coroutine
+from asyncio import Task, TaskGroup, get_event_loop
 from datetime import datetime
+from logging import getLogger
+
 import html
 import json
-from logging import getLogger
-from typing import Coroutine
-from aiohttp import ClientSession
-from bs4 import BeautifulSoup, Tag
 
-from discord import Client, Embed, Intents, Interaction, Message, TextChannel, Webhook
+from aiohttp import ClientSession
+from blinker import Namespace
+from bs4 import BeautifulSoup, Tag
+from discord import Client, Embed, Intents, Interaction, Member, Message, TextChannel, Webhook
 from discord.app_commands import CommandTree, Group
 from discord.utils import setup_logging, find, MISSING
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -21,6 +23,7 @@ from bridget.se2discord import SEToDiscordForwarder
 from bridget.util import ChatPFPFetcher, resolveChatPFP, prettyDelta
 
 class BridgetClient(Client):
+    signals = Namespace()
     def __init__(self):
         intents = Intents.none()
         intents.guilds = True
@@ -45,11 +48,25 @@ class BridgetClient(Client):
     async def setup_hook(self):
         await self.tree.sync()
 
+    async def on_message(self, message: Message):
+        await self.signals.signal("message").send_async(self, message=message)
+    async def on_message_edit(self, before: Message, after: Message):
+        await self.signals.signal("message_edit").send_async(self, before=before, after=after)
+    async def on_message_delete(self, message: Message):
+        await self.signals.signal("message_delete").send_async(self, message=message)
+    async def on_typing(self, channel: TextChannel, user: Member, started: datetime):
+        await self.signals.signal("typing").send_async(self, channel=channel, user=user, started=started)
+
     async def queueSizeCommand(self, interaction: Interaction):
         assert interaction.guild_id is not None
         forwarder = self.forwarders[interaction.guild_id]
         await interaction.response.send_message(
-            f"There are {forwarder.queue.qsize()} messages in the queue.",
+            (
+                "Queue status:"
+                f"- {forwarder.sendQueue.qsize()} pending messages"
+                f"- {forwarder.editQueue.qsize()} pending edits"
+                f"- {forwarder.deleteQueue.qsize()} pending deletions"
+            ),
             ephemeral=True
         )
 
@@ -145,13 +162,6 @@ class Bridget:
         setup_logging()
         self.logger = getLogger("Bridget")
         self.config = config
-        self.tasks: set[Task] = set()
-
-    def startTask(self, coro: Coroutine):
-        task = get_event_loop().create_task(coro)
-        self.tasks.add(task)
-        task.add_done_callback(self.tasks.remove)
-        return task
 
     async def run(self):
         self.logger.info("Starting")
@@ -164,37 +174,31 @@ class Bridget:
 
         client = BridgetClient()
         await client.login(self.config["token"])
-        clientTask = self.startTask(client.connect())
-        await client.wait_until_ready()
+        async with TaskGroup() as group:
+            clientTask = group.create_task(client.connect())
+            await client.wait_until_ready()
 
-        self.logger.info("Clients ready")
-        assert bot.userID is not None
-        for single in self.config["single"]:
-            hook = Webhook.from_url(single["hook"], client=client)
-            forwarder = SEToDiscordForwarder(bot.userID, single["room"], hook, engine, pfpFetcher)
-            self.startTask(forwarder.run())
+            self.logger.info("Clients ready")
+            assert bot.userID is not None
+            for single in self.config["single"]:
+                hook = Webhook.from_url(single["hook"], client=client)
+                forwarder = SEToDiscordForwarder(bot.userID, single["room"], hook, engine, pfpFetcher)
+                group.create_task(forwarder.run())
 
-        for dual in self.config["dual"]:
-            guild = client.get_guild(dual["guild"])
-            assert guild is not None
-            channel = guild.get_channel(dual["channel"])
-            assert isinstance(channel, TextChannel)
-            hook = find(lambda hook: hook.user == client.user, await channel.webhooks())
-            if not isinstance(hook, Webhook):
-                hook = await channel.create_webhook(name="Bridget", reason="Creating bridge webhook")
-            room = await bot.joinRoom(dual["room"])
-            se2dc = SEToDiscordForwarder(bot.userID, dual["room"], hook, engine, pfpFetcher)
-            dc2se = DiscordToSEForwarder(room, client, engine, guild, channel, dual["roleIcons"], dual["ignore"])
-            client.forwarders[guild.id] = dc2se
-            self.startTask(se2dc.run())
-            self.startTask(dc2se.run())
+            for dual in self.config["dual"]:
+                guild = client.get_guild(dual["guild"])
+                assert guild is not None
+                channel = guild.get_channel(dual["channel"])
+                assert isinstance(channel, TextChannel)
+                hook = find(lambda hook: hook.user == client.user, await channel.webhooks())
+                if not isinstance(hook, Webhook):
+                    hook = await channel.create_webhook(name="Bridget", reason="Creating bridge webhook")
+                room = await bot.joinRoom(dual["room"])
+                se2dc = SEToDiscordForwarder(bot.userID, dual["room"], hook, engine, pfpFetcher)
+                dc2se = DiscordToSEForwarder(room, client, engine, guild, channel, dual["roleIcons"], dual["ignore"])
+                client.forwarders[guild.id] = dc2se
+                group.create_task(se2dc.run())
+                group.create_task(dc2se.run())
 
-        try:
-            await clientTask
-        finally:
-            self.logger.info("Shutting down")
-            for task in self.tasks:
-                task.cancel()
-                await task
-            await bot.shutdown()
-            await client.close()
+        await bot.shutdown()
+        await client.close()

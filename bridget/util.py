@@ -22,6 +22,8 @@ def approxDelta(delta: timedelta):
         return plural(seconds // MINUTE, "minute")
     if seconds < DAY:
         return plural(seconds // HOUR, "hour")
+    if seconds < YEAR:
+        return plural(seconds // DAY, "day")
     return plural(seconds // YEAR, "year")
 
 def prettyDelta(delta: timedelta):

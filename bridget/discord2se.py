@@ -1,13 +1,14 @@
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 from datetime import datetime
 from logging import getLogger
-from asyncio import Queue, Lock, TaskGroup, gather, get_event_loop, sleep
+from asyncio import Queue, Lock, TaskGroup, get_event_loop, sleep
 from dataclasses import dataclass
 from aiohttp import ClientSession
 
 import json
 
-from discord import Client, Guild, Intents, Member, Message, RawMessageDeleteEvent, RawMessageUpdateEvent, TextChannel, User, Webhook
+from discord import Guild, Member, Message, TextChannel
+from discord.utils import find
 from odmantic import AIOEngine
 from sechat import Room
 if TYPE_CHECKING:
@@ -123,6 +124,10 @@ class DiscordToSEForwarder:
         assert isinstance(message.author, Member)
         content = self.converter.convert(message.content)
         if content.count("\n") == 0:
+            if len(message.embeds) == 1:
+                content += "<embed>"
+            elif len(message.embeds) > 1:
+                content += f"<{len(message.embeds)} embeds>"
             for attachment in message.attachments:
                 content += f" [{attachment.filename}]({attachment.url})"
         prefix = note + self.prefix(message.author)
@@ -194,8 +199,13 @@ class DiscordToSEForwarder:
     async def editTask(self):
         while True:
             item = await self.editQueue.get()
+            message = await self.channel.get_partial_message(item.messageInfo.discordIdent).fetch()
+            if len(item.message) > 200:
+                await message.add_reaction("📏")
+            elif find(lambda r: r.emoji == "📏", message.reactions) is not None:
+                assert self.client.user is not None
+                await message.remove_reaction("📏", self.client.user)
             if not self.canModify(item.messageInfo.recievedAt):
-                message = await self.channel.get_partial_message(item.messageInfo.discordIdent).fetch()
                 await message.reply("Edit ignored due to edit window expiring, sorry!")
             else:
                 await self.room.edit(item.messageInfo.chatIdent, item.message)

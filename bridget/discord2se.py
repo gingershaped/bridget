@@ -219,4 +219,5 @@ class DiscordToSEForwarder:
         async with TaskGroup() as group:
             group.create_task(self.sendTask())
             group.create_task(self.editTask())
+            group.create_task(self.deleteTask())
             group.create_task(self.typing.run())

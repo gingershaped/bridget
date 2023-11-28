@@ -163,10 +163,13 @@ class DiscordToSEForwarder:
         if before.content != after.content:
             if (messageInfo := await self.getSEByDiscord(before.id)) is not None:
                 await self.editQueue.put(EditMessageAction(messageInfo, await self.prepareMessage(after)))
-            elif len(await self.prepareMessage(before)) > 200 and len(await self.prepareMessage(after)) < 200:
-                await self.sendQueue.put(SendMessageAction(
-                    after, await self.prepareMessage(after)
-                ))
+            else:
+                prepared = await self.prepareMessage(after)
+                if prepared.count("\n") == 0:
+                    if len(await self.prepareMessage(before)) > 200 and len(prepared) <= 200:
+                        await self.sendQueue.put(SendMessageAction(
+                            after, await self.prepareMessage(after)
+                        ))
 
     async def on_message_delete(self, sender, message: Message):
         if (messageInfo := await self.getSEByDiscord(message.id)) is not None:
@@ -180,6 +183,9 @@ class DiscordToSEForwarder:
                 # not today
                 await item.discordMessage.add_reaction("📏")
             else:
+                if find(lambda r: r.emoji == "📏", item.discordMessage.reactions) is not None:
+                    assert self.client.user is not None
+                    await item.discordMessage.remove_reaction("📏", self.client.user)
                 sendStarted = datetime.now()
                 messageId = await self.room.send(item.message)
                 if messageId is not None:

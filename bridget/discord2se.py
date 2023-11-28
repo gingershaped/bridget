@@ -167,6 +167,8 @@ class DiscordToSEForwarder:
                 prepared = await self.prepareMessage(after)
                 if prepared.count("\n") == 0:
                     if len(await self.prepareMessage(before)) > 200 and len(prepared) <= 200:
+                        assert self.client.user is not None
+                        await after.remove_reaction("📏", self.client.user)
                         await self.sendQueue.put(SendMessageAction(
                             after, await self.prepareMessage(after)
                         ))
@@ -183,9 +185,6 @@ class DiscordToSEForwarder:
                 # not today
                 await item.discordMessage.add_reaction("📏")
             else:
-                if find(lambda r: r.emoji == "📏", item.discordMessage.reactions) is not None:
-                    assert self.client.user is not None
-                    await item.discordMessage.remove_reaction("📏", self.client.user)
                 sendStarted = datetime.now()
                 messageId = await self.room.send(item.message)
                 if messageId is not None:

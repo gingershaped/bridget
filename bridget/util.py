@@ -15,7 +15,7 @@ def approxDelta(delta: timedelta):
             return f"{n} {suffix}"
         return f"{n} {suffix}s"
     
-    seconds = delta.seconds
+    seconds = int(delta.total_seconds())
     if seconds < MINUTE:
         return plural(seconds, "second")
     if seconds < HOUR:

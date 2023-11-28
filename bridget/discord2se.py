@@ -163,6 +163,10 @@ class DiscordToSEForwarder:
         if before.content != after.content:
             if (messageInfo := await self.getSEByDiscord(before.id)) is not None:
                 await self.editQueue.put(EditMessageAction(messageInfo, await self.prepareMessage(after)))
+            elif len(await self.prepareMessage(before)) > 200 and len(await self.prepareMessage(after)) < 200:
+                await self.sendQueue.put(SendMessageAction(
+                    after, await self.prepareMessage(after)
+                ))
 
     async def on_message_delete(self, sender, message: Message):
         if (messageInfo := await self.getSEByDiscord(message.id)) is not None:

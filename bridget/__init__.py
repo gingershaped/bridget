@@ -63,9 +63,9 @@ class BridgetClient(Client):
         await interaction.response.send_message(
             (
                 "Queue status:"
-                f"- {forwarder.sendQueue.qsize()} pending messages"
-                f"- {forwarder.editQueue.qsize()} pending edits"
-                f"- {forwarder.deleteQueue.qsize()} pending deletions"
+                f"\n- {forwarder.sendQueue.qsize()} pending messages"
+                f"\n- {forwarder.editQueue.qsize()} pending edits"
+                f"\n- {forwarder.deleteQueue.qsize()} pending deletions"
             ),
             ephemeral=True
         )

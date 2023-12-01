@@ -133,9 +133,9 @@ class DiscordToSEForwarder:
         content = self.converter.convert(message.content)
         if content.count("\n") == 0:
             if len(message.embeds) == 1:
-                content += "<embed>"
+                content += " <embed>"
             elif len(message.embeds) > 1:
-                content += f"<{len(message.embeds)} embeds>"
+                content += f" <{len(message.embeds)} embeds>"
             for attachment in message.attachments:
                 if len(attachment.url) > self.shortenThreshold and self.shlink is not None:
                     url = await self.shlink.shorten(attachment.url)

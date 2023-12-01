@@ -102,6 +102,11 @@ class Discordifier:
                 # image onebox
                 assert isinstance(img := div.find("img"), Tag)
                 return self.fixUrl(img.attrs["src"])
+            elif "ob-wikipedia" in div["class"]:
+                # wikipedia onebox
+                assert isinstance(title := div.find(class_="ob-wikipedia-title"), Tag)
+                assert isinstance(link := title.find("a"), Tag)
+                return link.attrs["href"]
 
     def convertRoomOnebox(self, soup: BeautifulSoup, div: Tag):
         assert isinstance(roomNameContainer := div.find(class_="room-name"), Tag)

@@ -12,7 +12,7 @@ sechat = {git = "https://github.com/GingerIndustries/sechat", rev = "v2"}
 bs4 = "^0.0.1"
 markdownify = "^0.11.6"
 odmantic = "^0.9.2"
-pydantic = "<3.0"
+pydantic = "<2.0"
 discord-markdown-ast-parser = "^1.0.6"
 lxml = "^4.9.3"
 blinker = "^1.7.0"

@@ -198,7 +198,7 @@ class Bridget:
                     hook = await channel.create_webhook(name="Bridget", reason="Creating bridge webhook")
                 room = await bot.joinRoom(dual["room"])
                 se2dc = SEToDiscordForwarder(bot.userID, dual["room"], hook, engine, pfpFetcher)
-                dc2se = DiscordToSEForwarder(room, client, engine, guild, channel, dual["roleIcons"], dual["ignore"])
+                dc2se = DiscordToSEForwarder(room, client, engine, guild, channel, dual["roleIcons"], dual["ignore"], self.config["shlink"])
                 client.forwarders[guild.id] = dc2se
                 group.create_task(se2dc.run())
                 group.create_task(dc2se.run())

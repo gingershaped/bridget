@@ -1,4 +1,4 @@
-from typing import TypedDict
+from typing import TypedDict, Optional
 from datetime import datetime
 
 from odmantic import Field, Model
@@ -25,6 +25,11 @@ class DatabaseConfig(TypedDict):
     uri: str
     name: str
 
+class ShlinkConfig(TypedDict):
+    url: str
+    key: str
+    threshold: int
+
 class ChatConfig(TypedDict):
     email: str
     password: str
@@ -34,5 +39,6 @@ class Configuration(TypedDict):
     token: str
     chat: ChatConfig
     database: DatabaseConfig
+    shlink: Optional[ShlinkConfig]
     dual: list[DualBridge]
     single: list[SingleBridge]

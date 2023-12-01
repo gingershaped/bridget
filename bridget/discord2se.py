@@ -11,10 +11,12 @@ from discord import Guild, Member, Message, TextChannel
 from discord.utils import find
 from odmantic import AIOEngine
 from sechat import Room
+
 if TYPE_CHECKING:
     from bridget import BridgetClient
 from bridget.chatifier import Chatifier
-from bridget.models import BridgedMessage
+from bridget.shlink import Shlink
+from bridget.models import BridgedMessage, ShlinkConfig
 
 @dataclass
 class Action:
@@ -81,7 +83,7 @@ class WhosTyping:
                     await sleep(0.5)
 
 class DiscordToSEForwarder:
-    def __init__(self, room: Room, client: "BridgetClient", engine: AIOEngine, guild: Guild, channel: TextChannel, roleSymbols: dict[str, str], ignore: list[int]):
+    def __init__(self, room: Room, client: "BridgetClient", engine: AIOEngine, guild: Guild, channel: TextChannel, roleSymbols: dict[str, str], ignore: list[int], shlink: ShlinkConfig | None):
         self.sendQueue: Queue[SendMessageAction] = Queue()
         self.editQueue: Queue[EditMessageAction] = Queue()
         self.deleteQueue: Queue[DeleteMessageAction] = Queue()
@@ -92,6 +94,12 @@ class DiscordToSEForwarder:
         self.channel = channel
         self.roleSymbols = roleSymbols
         self.ignore = ignore
+        if shlink is not None:
+            self.shlink = Shlink(shlink["url"], shlink["key"])
+            self.shortenThreshold = shlink["threshold"]
+        else:
+            self.shlink = None
+            self.shortenThreshold = 0
         self.converter = Chatifier(guild)
         self.typing = WhosTyping(client, self.room.roomID, self.channel.id)
 
@@ -129,7 +137,11 @@ class DiscordToSEForwarder:
             elif len(message.embeds) > 1:
                 content += f"<{len(message.embeds)} embeds>"
             for attachment in message.attachments:
-                content += f" [{attachment.filename}]({attachment.url})"
+                if len(attachment.url) > self.shortenThreshold and self.shlink is not None:
+                    url = await self.shlink.shorten(attachment.url)
+                else:
+                    url = attachment.url
+                content += f" [{attachment.filename}]({url})"
         prefix = note + self.prefix(message.author)
         reply = ""
         if message.reference is not None and message.reference.message_id is not None:

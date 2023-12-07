@@ -185,7 +185,7 @@ class Bridget:
             assert bot.userID is not None
             for single in self.config["single"]:
                 hook = Webhook.from_url(single["hook"], client=client)
-                forwarder = SEToDiscordForwarder(bot.userID, single["room"], hook, engine, pfpFetcher)
+                forwarder = SEToDiscordForwarder(bot.userID, single["room"], single.get("noembed", []), hook, engine, pfpFetcher)
                 group.create_task(forwarder.run())
 
             for dual in self.config["dual"]:
@@ -197,11 +197,12 @@ class Bridget:
                 if not isinstance(hook, Webhook):
                     hook = await channel.create_webhook(name="Bridget", reason="Creating bridge webhook")
                 room = await bot.joinRoom(dual["room"])
-                se2dc = SEToDiscordForwarder(bot.userID, dual["room"], hook, engine, pfpFetcher)
+                se2dc = SEToDiscordForwarder(bot.userID, dual["room"], dual.get("noembed", []), hook, engine, pfpFetcher)
                 dc2se = DiscordToSEForwarder(room, client, engine, guild, channel, dual["roleIcons"], dual["ignore"], self.config["shlink"])
                 client.forwarders[guild.id] = dc2se
                 group.create_task(se2dc.run())
                 group.create_task(dc2se.run())
+            self.logger.info("Forwarders started")
 
         await bot.shutdown()
-        await client.close()
+        await client.close(

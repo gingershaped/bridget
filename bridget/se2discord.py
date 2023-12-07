@@ -15,10 +15,11 @@ from bridget.models import BridgedMessage
 from bridget.util import ChatPFPFetcher
 
 class SEToDiscordForwarder:
-    def __init__(self, userId: int, room: int, hook: Webhook, engine: AIOEngine, pfpFetcher: ChatPFPFetcher):
+    def __init__(self, userId: int, room: int, noembed: list[int], hook: Webhook, engine: AIOEngine, pfpFetcher: ChatPFPFetcher):
         self.lastT = 0
         self.userId = userId
         self.room = room
+        self.noembed = noembed
         self.hook = hook
         self.engine = engine
         self.converter = Discordifier()
@@ -79,13 +80,18 @@ class SEToDiscordForwarder:
                     view=view
                 )
         else:
+            if event.user_id in self.noembed and not len(embeds):
+                noembeds = True
+            else:
+                noembeds = False
             message = await self.hook.send(
                 content=content,
                 username=event.user_name,
                 avatar_url=pfp,
                 embeds=embeds,
+                suppress_embeds=noembeds,
                 view=view,
-                wait=True
+                wait=True,
             )
             await self.engine.save(BridgedMessage(
                 chatIdent=event.message_id,

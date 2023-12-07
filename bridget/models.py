@@ -16,10 +16,12 @@ class DualBridge(TypedDict):
     room: int
     roleIcons: dict[str, str]
     ignore: list[int]
+    noembed: list[int]
 
 class SingleBridge(TypedDict):
     hook: str
     room: int
+    noembed: list[int]
 
 class DatabaseConfig(TypedDict):
     uri: str

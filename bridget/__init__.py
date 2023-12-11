@@ -205,4 +205,4 @@ class Bridget:
             self.logger.info("Forwarders started")
 
         await bot.shutdown()
-        await client.close(
+        await client.close()

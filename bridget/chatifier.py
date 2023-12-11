@@ -31,6 +31,8 @@ class Chatifier:
                 yield from self.wrap(node, "---")
             case NodeType.SPOILER:
                 yield from self.wrap(node, "[spoiler](https://spoiler \"", "\")")
+            case NodeType.CODE_INLINE:
+                yield from self.wrap(node, "`")
             case NodeType.USER:
                 assert node.discord_id is not None
                 member = self.guild.get_member(node.discord_id)

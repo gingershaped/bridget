@@ -116,9 +116,9 @@ class BridgetClient(Client):
         ).add_field(
             name="Reputation", value=user["reputation"]
         ).add_field(
-            name="Last seen", value=prettyDelta((datetime.now() - datetime.fromtimestamp(user["last_seen"]))), inline=True
+            name="Last seen", value=prettyDelta((datetime.now() - datetime.fromtimestamp(user["last_seen"]))) if user["last_seen"] != None else "Unknown", inline=True
         ).add_field(
-            name="Last message", value=prettyDelta((datetime.now() - datetime.fromtimestamp(user["last_post"]))), inline=True
+            name="Last message", value=prettyDelta((datetime.now() - datetime.fromtimestamp(user["last_post"]))) if user["last_post"] != None else "Unknown", inline=True
         ).set_thumbnail(
             url=resolveChatPFP(user["email_hash"])
         ).set_footer(

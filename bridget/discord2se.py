@@ -172,10 +172,10 @@ class DiscordToSEForwarder:
         ))
 
     async def on_message_edit(self, sender, before: Message, after: Message):
-        if before.content != after.content:
+        if before.content != after.content and isinstance(after.author, Member):
             if (messageInfo := await self.getSEByDiscord(before.id)) is not None:
                 await self.editQueue.put(EditMessageAction(messageInfo, await self.prepareMessage(after)))
-            elif isinstance(after.author, Member):
+            else:
                 prepared = await self.prepareMessage(after)
                 if prepared.count("\n") == 0:
                     if len(await self.prepareMessage(before)) > 200 and len(prepared) <= 200:

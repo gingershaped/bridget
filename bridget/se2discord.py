@@ -1,12 +1,9 @@
 from datetime import datetime
 from asyncio import sleep
-from typing import overload
 
-from aiohttp import ClientSession
 from bs4 import BeautifulSoup, Tag
-from discord import Embed, NotFound, Webhook, WebhookMessage, ButtonStyle
+from discord import Embed, Forbidden, NotFound, TextChannel, Webhook
 from discord.utils import MISSING
-from discord.ui import View, Button
 from sechat import EditEvent, MessageEvent, DeleteEvent
 from odmantic import AIOEngine
 
@@ -28,8 +25,13 @@ class SEToDiscordForwarder:
     async def getDiscordBySE(self, ident: int):
         if (message := await self.engine.find_one(BridgedMessage, BridgedMessage.chatIdent == ident)) is not None:
             try:
-                return await self.hook.fetch_message(message.discordIdent)
-            except NotFound:
+                assert self.hook.user != None
+                if message.discordUser == self.hook.user.id:
+                    return await self.hook.fetch_message(message.discordIdent)
+                else:
+                    assert isinstance(self.hook.channel, TextChannel)
+                    return await self.hook.channel.fetch_message(message.discordIdent)
+            except (NotFound, Forbidden):
                 return None
 
     async def getReplyEmbed(self, messageId: int):

@@ -2,7 +2,7 @@ from datetime import datetime
 from asyncio import sleep
 
 from bs4 import BeautifulSoup, Tag
-from discord import Embed, Forbidden, NotFound, TextChannel, Webhook
+from discord import Embed, Forbidden, NotFound, TextChannel, Webhook, WebhookMessage
 from discord.utils import MISSING
 from sechat import EditEvent, MessageEvent, DeleteEvent
 from odmantic import AIOEngine
@@ -75,7 +75,7 @@ class SEToDiscordForwarder:
         # polymorphism abuse
         if isinstance(event, EditEvent):
             messageInfo = await self.getDiscordBySE(event.message_id)
-            if messageInfo is not None:
+            if isinstance(messageInfo, WebhookMessage):
                 await messageInfo.edit(
                     content=content,
                     embeds=embeds,
@@ -107,7 +107,7 @@ class SEToDiscordForwarder:
         if event.user_id == self.userId:
             return
         messageInfo = await self.getDiscordBySE(event.message_id)
-        if messageInfo is not None:
+        if isinstance(messageInfo, WebhookMessage):
             await messageInfo.delete()
 
     async def getFkey(self):

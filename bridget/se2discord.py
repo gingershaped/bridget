@@ -95,11 +95,12 @@ class SEToDiscordForwarder:
                 view=view,
                 wait=True,
             )
+            assert self.hook.user != None
             await self.engine.save(BridgedMessage(
                 chatIdent=event.message_id,
                 discordIdent=message.id,
                 chatUser=event.user_id,
-                discordUser=message.author.id,
+                discordUser=self.hook.user.id,
                 recievedAt=datetime.now()
             ))
 

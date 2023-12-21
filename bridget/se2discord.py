@@ -97,7 +97,7 @@ class SEToDiscordForwarder:
             )
             await self.engine.save(BridgedMessage(
                 chatIdent=event.message_id,
-                discordIdent=message.author.id,
+                discordIdent=message.id,
                 chatUser=event.user_id,
                 discordUser=message.author.id,
                 recievedAt=datetime.now()

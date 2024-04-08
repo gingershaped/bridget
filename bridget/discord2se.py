@@ -10,7 +10,7 @@ import json
 from discord import Guild, Member, Message, TextChannel
 from discord.utils import find
 from odmantic import AIOEngine
-from sechat import Room
+from sechat import EventType, MentionEvent, ReplyEvent, Room
 
 if TYPE_CHECKING:
     from bridget import BridgetClient

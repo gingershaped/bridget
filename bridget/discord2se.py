@@ -10,7 +10,8 @@ import json
 from discord import Guild, Member, Message, TextChannel
 from discord.utils import find
 from odmantic import AIOEngine
-from sechat import EventType, MentionEvent, ReplyEvent, Room
+from sechat import Room
+from sechat.events import EventType, MentionEvent, ReplyEvent
 
 if TYPE_CHECKING:
     from bridget import BridgetClient
@@ -101,7 +102,7 @@ class DiscordToSEForwarder:
             self.shlink = None
             self.shortenThreshold = 0
         self.converter = Chatifier(guild)
-        self.typing = WhosTyping(client, self.room.roomID, self.channel.id)
+        self.typing = WhosTyping(client, self.room.room_id, self.channel.id)
 
         self.client.signals.signal("message").connect(self.on_message)
         self.client.signals.signal("message_edit").connect(self.on_message_edit)
@@ -234,7 +235,7 @@ class DiscordToSEForwarder:
     
     async def sendNotification(self, target: int, message: str):
         await self.sendQueue.join()
-        await self.room.reply(target, message)
+        await self.room.send(message, target)
 
     async def deleteTask(self):
         while True:

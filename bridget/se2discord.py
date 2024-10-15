@@ -4,7 +4,7 @@ from asyncio import sleep
 from bs4 import BeautifulSoup, Tag
 from discord import Embed, Forbidden, NotFound, TextChannel, Webhook, WebhookMessage
 from discord.utils import MISSING
-from sechat import EditEvent, MessageEvent, DeleteEvent
+from sechat.events import EditEvent, MessageEvent, DeleteEvent
 from odmantic import AIOEngine
 
 from bridget.discordifier import Discordifier

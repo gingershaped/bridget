@@ -1,7 +1,7 @@
 from typing import Coroutine
 from asyncio import Task, TaskGroup, get_event_loop
 from datetime import datetime
-from logging import getLogger
+from logging import getLogger, DEBUG
 
 import html
 import json
@@ -14,7 +14,7 @@ from discord.app_commands import CommandTree, Group
 from discord.utils import setup_logging, find, MISSING
 from motor.motor_asyncio import AsyncIOMotorClient
 from odmantic import AIOEngine
-from sechat import Bot
+from sechat import Credentials, Room
 
 from bridget.discord2se import DiscordToSEForwarder
 from bridget.discordifier import Discordifier
@@ -88,9 +88,9 @@ class BridgetClient(Client):
         assert interaction.guild_id is not None
         forwarder = self.forwarders[interaction.guild_id]
         async with ClientSession() as session:
-            async with session.get(f"https://chat.stackexchange.com/rooms/thumbs/{forwarder.room.roomID}") as response:
+            async with session.get(f"https://chat.stackexchange.com/rooms/thumbs/{forwarder.room.room_id}") as response:
                 roomInfo = await response.json()
-            async with session.get(f"https://chat.stackexchange.com/rooms/{forwarder.room.roomID}") as response:
+            async with session.get(f"https://chat.stackexchange.com/rooms/{forwarder.room.room_id}") as response:
                 soup = BeautifulSoup(await response.content.read(), features="lxml")
                 assert isinstance(userDiv := soup.find(class_="js-present"), Tag)
                 users = json.loads(html.unescape(userDiv.attrs["data-users"]))
@@ -100,7 +100,7 @@ class BridgetClient(Client):
                 description=self.converter.convert(
                     BeautifulSoup(roomInfo["description"], features="lxml")
                 ),
-                url=f"https://chat.stackexchange.com/rooms/{forwarder.room.roomID}",
+                url=f"https://chat.stackexchange.com/rooms/{forwarder.room.room_id}",
             ).add_field(
                 name="In room", value=", ".join(
                     f"[{user['name']}](https://chat.stackexchange.com/user/{user['id']})" for user in users
@@ -131,7 +131,7 @@ class BridgetClient(Client):
         assert interaction.guild_id is not None
         forwarder = self.forwarders[interaction.guild_id]
         async with ClientSession() as session:
-            async with session.get(f"https://chat.stackexchange.com/rooms/{forwarder.room.roomID}") as response:
+            async with session.get(f"https://chat.stackexchange.com/rooms/{forwarder.room.room_id}") as response:
                 soup = BeautifulSoup(await response.content.read(), features="lxml")
                 assert isinstance(userDiv := soup.find(class_="js-present"), Tag)
                 users = json.loads(html.unescape(userDiv.attrs["data-users"]))
@@ -162,7 +162,7 @@ class BridgetClient(Client):
 
 class Bridget:
     def __init__(self, config: Configuration):
-        setup_logging()
+        setup_logging(level=DEBUG)
         self.logger = getLogger("Bridget")
         self.config = config
 
@@ -172,8 +172,7 @@ class Bridget:
         engine = AIOEngine(AsyncIOMotorClient(self.config["database"]["uri"]), self.config["database"]["name"])
         pfpFetcher = ChatPFPFetcher()
 
-        bot = Bot()
-        await bot.authenticate(self.config["chat"]["email"], self.config["chat"]["password"], self.config["chat"]["host"])
+        credentials = await Credentials.load_or_authenticate("credentials.dat", self.config["chat"]["email"], self.config["chat"]["password"])
 
         client = BridgetClient()
         await client.login(self.config["token"])
@@ -182,10 +181,9 @@ class Bridget:
             await client.wait_until_ready()
 
             self.logger.info("Clients ready")
-            assert bot.userID is not None
             for single in self.config["single"]:
                 hook = Webhook.from_url(single["hook"], client=client)
-                forwarder = SEToDiscordForwarder(bot.userID, single["room"], single.get("noembed", []), hook, engine, pfpFetcher)
+                forwarder = SEToDiscordForwarder(credentials.user_id, single["room"], single.get("noembed", []), hook, engine, pfpFetcher)
                 group.create_task(forwarder.run())
 
             for dual in self.config["dual"]:
@@ -196,13 +194,12 @@ class Bridget:
                 hook = find(lambda hook: hook.user == client.user, await channel.webhooks())
                 if not isinstance(hook, Webhook):
                     hook = await channel.create_webhook(name="Bridget", reason="Creating bridge webhook")
-                room = await bot.joinRoom(dual["room"])
-                se2dc = SEToDiscordForwarder(bot.userID, dual["room"], dual.get("noembed", []), hook, engine, pfpFetcher)
+                room = Room.join(credentials, dual["room"])
+                se2dc = SEToDiscordForwarder(credentials.user_id, dual["room"], dual.get("noembed", []), hook, engine, pfpFetcher)
                 dc2se = DiscordToSEForwarder(room, client, engine, guild, channel, dual["roleIcons"], dual["ignore"], self.config["shlink"])
                 client.forwarders[guild.id] = dc2se
                 group.create_task(se2dc.run())
                 group.create_task(dc2se.run())
             self.logger.info("Forwarders started")
 
-        await bot.shutdown()
         await client.close()

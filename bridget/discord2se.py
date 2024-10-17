@@ -171,6 +171,11 @@ class DiscordToSEForwarder:
                         await connection.send_str("")
                 await sleep(0.5)
 
+    async def _room_ws_task(self):
+        # open a webhook connection so we stay in the room list
+        async for event in self.room.events():
+            print(event)
+
     async def run(self):
         try:
             async with TaskGroup() as group:
@@ -179,5 +184,6 @@ class DiscordToSEForwarder:
                 group.create_task(self._send_task(), name=f"send/{self.room.room_id}")
                 group.create_task(self._notification_task(), name=f"notification/{self.room.room_id}")
                 group.create_task(self._typing_task(), name=f"typing/{self.room.room_id}")
+                group.create_task(self._room_ws_task(), name=f"room-ws-hack/{self.room.room_id}")
         finally:
             await self.room.close()

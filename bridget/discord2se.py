@@ -141,7 +141,7 @@ class DiscordToSEForwarder:
                     se_message_id=se_message_id,
                     discord_message_id=message.id,
                     se_user_id=self.room.user_id,
-                    discord_user_id=self.client_id,
+                    discord_user_id=message.author.id,
                     received_at=datetime.now()
                 ))
             self._send_queue.task_done()

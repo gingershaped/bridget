@@ -28,13 +28,13 @@ class SEToDiscordForwarder:
     async def fetch_corresponding_message(self, se_message_id: int):
         if (message := await self.engine.find_one(BridgedMessage, BridgedMessage.se_message_id == se_message_id)) is not None:
             try:
-                assert self.webhook.user != None
+                assert self.webhook.user is not None
                 if message.discord_user_id == self.webhook.user.id:
                     return await self.webhook.fetch_message(message.discord_message_id)
                 else:
                     assert isinstance(self.webhook.channel, TextChannel)
                     return await self.webhook.channel.fetch_message(message.discord_message_id)
-            except (NotFound, Forbidden):
+            except (NotFound, Forbidden) as e:
                 return None
 
     async def create_reply_embed(self, messageId: int):
@@ -71,11 +71,10 @@ class SEToDiscordForwarder:
                     content = f"[⤷]({replied_message.jump_url})"
                 else:
                     content = f"[⤷]({replied_message.jump_url}) " + content
-        # polymorphism abuse
         if isinstance(event, EditEvent):
-            messageInfo = await self.fetch_corresponding_message(event.message_id)
-            if isinstance(messageInfo, WebhookMessage):
-                await messageInfo.edit(
+            message = await self.fetch_corresponding_message(event.message_id)
+            if isinstance(message, WebhookMessage):
+                await message.edit(
                     content=content,
                     embeds=embeds,
                     view=view
@@ -101,9 +100,8 @@ class SEToDiscordForwarder:
     async def handle_delete(self, event: DeleteEvent):
         if event.user_id in self.ignored:
             return
-        messageInfo = await self.fetch_corresponding_message(event.message_id)
-        if isinstance(messageInfo, WebhookMessage):
-            await messageInfo.delete()
+        if isinstance(message := await self.fetch_corresponding_message(event.message_id), WebhookMessage):
+            await message.delete()
 
     async def run(self):
         async for event in Room.anonymous(self.room_id):

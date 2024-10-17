@@ -1,60 +1,60 @@
-from datetime import datetime
 from asyncio import sleep
+from datetime import datetime
 
 from bs4 import BeautifulSoup, Tag
-from discord import Embed, Forbidden, NotFound, TextChannel, Webhook, WebhookMessage
+from discord import (Embed, Forbidden, NotFound, TextChannel, Webhook,
+                     WebhookMessage)
 from discord.utils import MISSING
-from sechat.events import EditEvent, MessageEvent, DeleteEvent
 from odmantic import AIOEngine
+from sechat import Room
+from sechat.events import DeleteEvent, EditEvent, MessageEvent
 
 from bridget.discordifier import Discordifier
 from bridget.models import BridgedMessage
 from bridget.util import ChatPFPFetcher
 
-class SEToDiscordForwarder:
-    def __init__(self, userId: int, room: int, noembed: list[int], hook: Webhook, engine: AIOEngine, pfpFetcher: ChatPFPFetcher):
-        self.lastT = 0
-        self.userId = userId
-        self.room = room
-        self.noembed = noembed
-        self.hook = hook
-        self.engine = engine
-        self.converter = Discordifier()
-        self.pfpFetcher = pfpFetcher
 
-    async def getDiscordBySE(self, ident: int):
-        if (message := await self.engine.find_one(BridgedMessage, BridgedMessage.chatIdent == ident)) is not None:
+class SEToDiscordForwarder:
+    pfp_fetcher = ChatPFPFetcher()
+    converter = Discordifier()
+    
+    def __init__(self, room_id: int, ignored: list[int], suppress_embeds_for: list[int], webhook: Webhook, engine: AIOEngine):
+        self.ignored = ignored
+        self.room_id = room_id
+        self.suppress_embeds_for = suppress_embeds_for
+        self.webhook = webhook
+        self.engine = engine
+
+    async def fetch_corresponding_message(self, se_message_id: int):
+        if (message := await self.engine.find_one(BridgedMessage, BridgedMessage.se_message_id == se_message_id)) is not None:
             try:
-                assert self.hook.user != None
-                if message.discordUser == self.hook.user.id:
-                    return await self.hook.fetch_message(message.discordIdent)
+                assert self.webhook.user != None
+                if message.discord_user_id == self.webhook.user.id:
+                    return await self.webhook.fetch_message(message.discord_message_id)
                 else:
-                    assert isinstance(self.hook.channel, TextChannel)
-                    return await self.hook.channel.fetch_message(message.discordIdent)
+                    assert isinstance(self.webhook.channel, TextChannel)
+                    return await self.webhook.channel.fetch_message(message.discord_message_id)
             except (NotFound, Forbidden):
                 return None
 
-    async def getReplyEmbed(self, messageId: int):
-        # not a great way to do this, but views only work in hook messages if a bot made the hook
-        # they silently fail otherwise
-        # this is documented nowhere in the discord.py or Discord docs :)
-        # at least it's only a fallback...
-        async with self.hook.session.get(f"https://chat.stackexchange.com/message/{messageId}?raw=true") as response:
+    async def create_reply_embed(self, messageId: int):
+        async with self.webhook.session.get(f"https://chat.stackexchange.com/message/{messageId}?raw=true") as response:
             return Embed(
                 title=f"Reply to #{messageId}",
                 url=f"https://chat.stackexchange.com/transcript/message/{messageId}#{messageId}",
                 description=(await response.text()).splitlines()[0]
             )
 
-    async def onMessage(self, event: MessageEvent):
-        if event.user_id == self.userId:
+    async def handle_message(self, event: MessageEvent):
+        assert self.webhook.user is not None
+        if event.user_id in self.ignored:
             return
         if event.content.startswith("\u200d"):
             return
         converted = self.converter.convert(BeautifulSoup(event.content, features="lxml"))
         if converted is None:
             return
-        pfp = await self.pfpFetcher.getPFP(event.user_id)
+        pfp = await self.pfp_fetcher.fetch_pfp_url(event.user_id)
         # this isn't great
         if isinstance(converted, Embed):
             embeds = [converted]
@@ -64,17 +64,16 @@ class SEToDiscordForwarder:
             content = converted
         view = MISSING
         if event.parent_id is not None and event.show_parent:
-            repliedMessageInfo = await self.getDiscordBySE(event.parent_id)
-            if repliedMessageInfo is None:
-                embeds.append(await self.getReplyEmbed(event.parent_id))
+            if (replied_message := await self.fetch_corresponding_message(event.parent_id)) is None:
+                embeds.append(await self.create_reply_embed(event.parent_id))
             else:
                 if content == MISSING:
-                    content = f"[⤷]({repliedMessageInfo.jump_url})"
+                    content = f"[⤷]({replied_message.jump_url})"
                 else:
-                    content = f"[⤷]({repliedMessageInfo.jump_url}) " + content
+                    content = f"[⤷]({replied_message.jump_url}) " + content
         # polymorphism abuse
         if isinstance(event, EditEvent):
-            messageInfo = await self.getDiscordBySE(event.message_id)
+            messageInfo = await self.fetch_corresponding_message(event.message_id)
             if isinstance(messageInfo, WebhookMessage):
                 await messageInfo.edit(
                     content=content,
@@ -82,78 +81,33 @@ class SEToDiscordForwarder:
                     view=view
                 )
         else:
-            if event.user_id in self.noembed and not len(embeds):
-                noembeds = True
-            else:
-                noembeds = False
-            message = await self.hook.send(
+            message = await self.webhook.send(
                 content=content,
                 username=event.user_name,
                 avatar_url=pfp,
                 embeds=embeds,
-                suppress_embeds=noembeds,
+                suppress_embeds=event.user_id in self.suppress_embeds_for and not len(embeds),
                 view=view,
                 wait=True,
             )
-            assert self.hook.user != None
-            await self.engine.save(BridgedMessage(
-                chatIdent=event.message_id,
-                discordIdent=message.id,
-                chatUser=event.user_id,
-                discordUser=self.hook.user.id,
-                recievedAt=datetime.now()
+            await self.engine.save(BridgedMessage( # type: ignore
+                se_message_id=event.message_id,
+                discord_message_id=message.id,
+                se_user_id=event.user_id,
+                discord_user_id=self.webhook.user.id,
+                received_at=datetime.now()
             ))
 
-    async def onDelete(self, event: DeleteEvent):
-        if event.user_id == self.userId:
+    async def handle_delete(self, event: DeleteEvent):
+        if event.user_id in self.ignored:
             return
-        messageInfo = await self.getDiscordBySE(event.message_id)
+        messageInfo = await self.fetch_corresponding_message(event.message_id)
         if isinstance(messageInfo, WebhookMessage):
             await messageInfo.delete()
 
-    async def getFkey(self):
-        # that yoinky sploinky
-        # fuck fkeys, this took me two days to figure out
-        async with self.hook.session.get(f"https://chat.stackexchange.com/rooms/{self.room}") as page:
-            soup = BeautifulSoup(await page.read(), features="lxml")
-            assert isinstance(frick := soup.find("input", id="fkey"), Tag)
-            return frick.attrs["value"]
-
-    async def getT(self):
-        async with self.hook.session.post(f"https://chat.stackexchange.com/chats/{self.room}/events", data={
-                "since": 0,
-                "mode": "Messages",
-                "msgCount": 100,
-                "fkey": self.fkey
-            }) as response:
-                return (await response.json())["time"]
-
-    async def events(self):
-        response = await self.hook.session.post(f"https://chat.stackexchange.com/events", data={
-            f"r{self.room}": self.lastT,
-            "fkey": self.fkey
-        })
-        data = (await response.json()).get(f"r{self.room}")
-        if data is None:
-            return
-        if "t" in data:
-            self.lastT = data["t"]
-        if "e" in data:
-            for event in data["e"]:
-                match event["event_type"]:
-                    case 1: # message
-                        yield MessageEvent(**event)
-                    case 2: # edit
-                        yield EditEvent(**event)
-                    case 10: # delete
-                        yield DeleteEvent(**event)
-
     async def run(self):
-        self.fkey = await self.getFkey()
-        self.lastT = await self.getT()
-        while True:
-            async for event in self.events():
-                if isinstance(event, MessageEvent):
-                    await self.onMessage(event)
-            # this is probably fine...
-            await sleep(2)
+        async for event in Room.anonymous(self.room_id):
+            if isinstance(event, MessageEvent):
+                await self.handle_message(event)
+            elif isinstance(event, DeleteEvent):
+                await self.handle_delete(event)

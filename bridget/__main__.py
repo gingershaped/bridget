@@ -1,10 +1,12 @@
 import json
 import asyncio
 
-from bridget import Bridget
+from discord.utils import setup_logging
+from bridget import BridgetClient
 
 with open("config.json") as file:
     config = json.load(file)
 
-bridget = Bridget(config)
+setup_logging()
+bridget = BridgetClient(config)
 asyncio.run(bridget.run())

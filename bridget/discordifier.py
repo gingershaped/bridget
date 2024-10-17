@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from typing import cast
 from urllib.parse import urlsplit, urlunsplit
 
 from discord import Embed
@@ -97,7 +98,7 @@ class Discordifier:
             elif "ob-youtube" in div["class"]:
                 # YT onebox
                 assert isinstance(link := div.find("a"), Tag)
-                return link.attrs["href"]
+                return cast(str, link.attrs["href"])
             elif "ob-image" in div["class"]:
                 # image onebox
                 assert isinstance(img := div.find("img"), Tag)
@@ -106,7 +107,7 @@ class Discordifier:
                 # wikipedia onebox
                 assert isinstance(title := div.find(class_="ob-wikipedia-title"), Tag)
                 assert isinstance(link := title.find("a"), Tag)
-                return link.attrs["href"]
+                return cast(str, link.attrs["href"])
 
     def convertRoomOnebox(self, soup: BeautifulSoup, div: Tag):
         assert isinstance(roomNameContainer := div.find(class_="room-name"), Tag)

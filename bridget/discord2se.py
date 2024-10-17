@@ -1,255 +1,183 @@
+import json
 from typing import TYPE_CHECKING
 from datetime import datetime
-from logging import getLogger
-from asyncio import Queue, Lock, TaskGroup, get_event_loop, sleep
-from dataclasses import dataclass
+from asyncio import Lock, Queue, TaskGroup, sleep
+
+
 from aiohttp import ClientSession
-
-import json
-
-from discord import Guild, Member, Message, TextChannel
+from discord import Member, Message, Object, TextChannel
 from discord.utils import find
 from odmantic import AIOEngine
 from sechat import Room
-from sechat.events import EventType, MentionEvent, ReplyEvent
 
-if TYPE_CHECKING:
-    from bridget import BridgetClient
 from bridget.chatifier import Chatifier
-from bridget.shlink import Shlink
-from bridget.models import BridgedMessage, ShlinkConfig
-
-@dataclass
-class Action:
-    pass
-
-# I do not like these dataclasses
-@dataclass
-class SendMessageAction(Action):
-    discordMessage: Message
-    message: str
-
-@dataclass
-class EditMessageAction(Action):
-    messageInfo: BridgedMessage
-    message: str
-
-@dataclass
-class DeleteMessageAction(Action):
-    messageInfo: BridgedMessage
-
-class WhosTyping:
-    def __init__(self, client: "BridgetClient", roomId: int, channelId: int):
-        self.logger = getLogger("WhosTyping").getChild(str(roomId))
-        self.client = client
-        self.roomId = roomId
-        self.channelId = channelId
-        self.lock = Lock()
-        self.typing: dict[str, datetime] = {}
-
-        self.client.signals.signal("typing").connect(self.on_typing)
-        self.client.signals.signal("message").connect(self.on_message)
-
-    async def on_typing(self, sender, channel: TextChannel, user: Member, started: datetime):
-        if not channel.id == self.channelId:
-            return
-        self.logger.info(f"Got typing notif for {user}")
-        async with self.lock:
-            self.typing[user.display_name] = datetime.now()
-
-    async def on_message(self, sender, message: Message):
-        if (
-            message.channel.id != self.channelId
-            or message.author.discriminator == "0000" # big brain time
-            or not isinstance(message.author, Member)
-            or message.author.display_name not in self.typing
-        ):
-            return
-        async with self.lock:
-            self.typing.pop(message.author.display_name)
-
-    async def run(self):
-        async with ClientSession() as session:
-            async with session.ws_connect("wss://rydwolf.xyz/whos_typing") as socket:
-                await socket.send_str(f"bridge\n{self.roomId}")
-                self.logger.info("Connected")
-                while True:
-                    async with self.lock:
-                        now = datetime.now()
-                        msg = "\n".join(
-                            json.dumps(user) for user, time in self.typing.items() if (now - time).seconds <= 10
-                        )
-                        if len(msg):
-                            await socket.send_str("\n" + msg)
-                    await sleep(0.5)
+from bridget.models import BridgedMessage
 
 class DiscordToSEForwarder:
-    def __init__(self, room: Room, client: "BridgetClient", engine: AIOEngine, guild: Guild, channel: TextChannel, roleSymbols: dict[str, str], ignore: list[int], shlink: ShlinkConfig | None):
-        self.sendQueue: Queue[SendMessageAction] = Queue()
-        self.editQueue: Queue[EditMessageAction] = Queue()
-        self.deleteQueue: Queue[DeleteMessageAction] = Queue()
+    max_message_length = 200
+
+    def __init__(self, room: Room, engine: AIOEngine, channel: TextChannel, client_id: int, role_symbols: dict[str, str], ignore: list[int]):
         self.room = room
         self.engine = engine
-        self.client = client
-        self.guild = guild
+        self.client_id = client_id
         self.channel = channel
-        self.roleSymbols = roleSymbols
+        self.role_symbols = role_symbols
         self.ignore = ignore
-        if shlink is not None:
-            self.shlink = Shlink(shlink["url"], shlink["key"])
-            self.shortenThreshold = shlink["threshold"]
-        else:
-            self.shlink = None
-            self.shortenThreshold = 0
-        self.converter = Chatifier(guild)
-        self.typing = WhosTyping(client, self.room.room_id, self.channel.id)
+        self.converter = Chatifier(channel.guild)
 
-        self.client.signals.signal("message").connect(self.on_message)
-        self.client.signals.signal("message_edit").connect(self.on_message_edit)
-        self.client.signals.signal("message_delete").connect(self.on_message_delete)
+        self._send_queue: Queue[Message] = Queue()
+        self._edit_queue: Queue[Message] = Queue()
+        self._delete_queue: Queue[Message] = Queue()
+        self.notification_queue: Queue[tuple[str, int]] = Queue()
 
-    def canModify(self, dt: datetime):
+        self._typing_lock = Lock()
+        self._last_typed_at: dict[int, datetime] = {}
+        
+
+    def can_modify(self, dt: datetime):
         # we use 2 minutes instead of 2.5 because any number of things may intervene
         # and cause us to go over if we use 2.5
         # which means an error, and I don't want to risk the whole thing imploding
         return (datetime.now() - dt).seconds < (60 * 2)
 
-    async def getSEByDiscord(self, ident: int):
-        if (message := await self.engine.find_one(BridgedMessage, BridgedMessage.discordIdent == ident)) is not None:
+    async def get_bridge_record(self, discord_id: int):
+        if (message := await self.engine.find_one(BridgedMessage, BridgedMessage.discord_message_id == discord_id)) is not None:
             return message
 
-    def prefix(self, user: Member):
+    def format_display_name(self, user: Member):
         # TODO: this is awful
         symbols = ""
         if user.bot:
             symbols += "⚙"
         for role in user.roles:
-            symbols += self.roleSymbols.get(str(role.id), "")
+            symbols += self.role_symbols.get(str(role.id), "")
         if len(symbols):
             symbols = " " + symbols
         return f"[{user.display_name}{symbols}]"
 
-    async def prepareMessage(self, message: Message, note: str = ""):
+    async def convert_message(self, message: Message, note: str = ""):
         assert isinstance(message.author, Member)
-        content = self.converter.convert(message.content)
+        content = await self.converter.convert(message.content)
         if content.count("\n") == 0:
             if len(message.embeds) == 1:
                 content += " <embed>"
             elif len(message.embeds) > 1:
                 content += f" <{len(message.embeds)} embeds>"
             for attachment in message.attachments:
-                if len(attachment.url) > self.shortenThreshold and self.shlink is not None:
-                    url = await self.shlink.shorten(attachment.url)
-                else:
-                    url = attachment.url
-                content += f" [{attachment.filename}]({url})"
-        prefix = note + self.prefix(message.author)
+                content += f" [{attachment.filename}]({attachment.url})"
+        prefix = note + self.format_display_name(message.author)
         reply = ""
         if message.reference is not None and message.reference.message_id is not None:
-            seMessage = await self.getSEByDiscord(message.reference.message_id)
+            seMessage = await self.get_bridge_record(message.reference.message_id)
             if seMessage is not None:
-                reply = f":{seMessage.chatIdent}"
+                reply = f":{seMessage.se_message_id}"
             elif content.count("\n") == 0:
                 reply = f"[⤷]({message.reference.jump_url})"
         if content.startswith("    "):
             content = f"    {prefix}\n{content}"
         elif content.startswith("> "):
-            content = f"{reply} > {self.prefix(message.author)}\n{content}"
+            content = f"{reply} > {self.format_display_name(message.author)}\n{content}"
         else:
-            content = f"{reply} {self.prefix(message.author)} {content}"
+            content = f"{reply} {self.format_display_name(message.author)} {content}"
         return content
 
-    async def on_message(self, sender, message: Message):
-        if (
-            message.guild != self.guild
-            or message.channel != self.channel
-            or message.author.discriminator == "0000" # big brain time
-            or not isinstance(message.author, Member)
-            or message.author.id in self.ignore
-        ):
-            return
-        await self.sendQueue.put(SendMessageAction(
-            message, await self.prepareMessage(message)
-        ))
+    async def queue_message(self, message: Message):
+        await self._send_queue.put(message)
+        async with self._typing_lock:
+            self._last_typed_at.pop(message.author.id, None)
 
-    async def on_message_edit(self, sender, before: Message, after: Message):
-        if before.content != after.content and isinstance(after.author, Member):
-            if (messageInfo := await self.getSEByDiscord(before.id)) is not None:
-                await self.editQueue.put(EditMessageAction(messageInfo, await self.prepareMessage(after)))
-            else:
-                prepared = await self.prepareMessage(after)
-                if prepared.count("\n") == 0:
-                    if len(await self.prepareMessage(before)) > 200 and len(prepared) <= 200:
-                        assert self.client.user is not None
-                        await after.remove_reaction("📏", self.client.user)
-                        await self.sendQueue.put(SendMessageAction(
-                            after, await self.prepareMessage(after)
-                        ))
+    async def queue_edit(self, message: Message):
+        await self._edit_queue.put(message)
 
-    async def on_message_delete(self, sender, message: Message):
-        if (messageInfo := await self.getSEByDiscord(message.id)) is not None:
-            await self.deleteQueue.put(DeleteMessageAction(messageInfo))
+    async def queue_delete(self, message: Message):
+        await self._delete_queue.put(message)
 
-    async def sendTask(self):
+    async def queue_typing(self, member: Member):
+        async with self._typing_lock:
+            self._last_typed_at[member.id] = datetime.now()
+
+    async def _delete_task(self):
         while True:
-            await self.editQueue.join()
-            item = await self.sendQueue.get()
-            if len(item.message) > 200 and item.message.count("\n") == 0:
-                # not today
-                await item.discordMessage.add_reaction("📏")
-            else:
-                sendStarted = datetime.now()
-                messageId = await self.room.send(item.message)
-                if messageId is not None:
-                    await self.engine.save(BridgedMessage(
-                        chatIdent=messageId,
-                        discordIdent=item.discordMessage.id,
-                        chatUser=self.room.userID,
-                        discordUser=item.discordMessage.author.id,
-                        recievedAt=datetime.now()
-                    ))
-                    if (datetime.now() - sendStarted).seconds >= 10:
-                        notif = await self.channel.send(
-                            "Ratelimit is too high! Forwarding from Discord to SE has been paused for two minutes."
-                        )
-                        await sleep(120)
-                        await notif.edit(content="Forwarding resumed.", delete_after=30)
+            message = await self._delete_queue.get()
+            if (bridge_record := await self.get_bridge_record(message.id)) is not None:
+                if self.can_modify(bridge_record.received_at):
+                    await self.room.delete(bridge_record.se_message_id)
                 else:
-                    await item.discordMessage.add_reaction("❌")
-            self.sendQueue.task_done()
-     
-    async def editTask(self):
-        while True:
-            item = await self.editQueue.get()
-            message = await self.channel.get_partial_message(item.messageInfo.discordIdent).fetch()
-            if len(item.message) > 200:
-                await message.add_reaction("📏")
-            elif find(lambda r: r.emoji == "📏", message.reactions) is not None:
-                assert self.client.user is not None
-                await message.remove_reaction("📏", self.client.user)
-            if not self.canModify(item.messageInfo.recievedAt):
-                await message.reply("Edit ignored due to edit window expiring, sorry!")
-            else:
-                await self.room.edit(item.messageInfo.chatIdent, item.message)
-            self.editQueue.task_done()
-    
-    async def sendNotification(self, target: int, message: str):
-        await self.sendQueue.join()
-        await self.room.send(message, target)
+                    await self.notification_queue.put(("Message was deleted", bridge_record.se_message_id))
+                await self.engine.delete(bridge_record)
+            self._delete_queue.task_done()
 
-    async def deleteTask(self):
+    async def _edit_task(self):
         while True:
-            item = await self.deleteQueue.get()
-            if not self.canModify(item.messageInfo.recievedAt):
-                get_event_loop().create_task(self.sendNotification(item.messageInfo.chatIdent, "Message was deleted."))
+            message = await self._edit_queue.get()
+            bridge_record = await self.get_bridge_record(message.id)
+            new_content = await self.convert_message(message)
+            if len(new_content) > self.max_message_length and new_content.count("\n") == 0:
+                await message.add_reaction("📏")
             else:
-                await self.room.delete(item.messageInfo.chatIdent)
-            await self.engine.delete(item.messageInfo)
-            self.deleteQueue.task_done()
+                if find(lambda r: r.emoji == "📏", message.reactions) is not None:
+                    await message.remove_reaction("📏", Object(self.client_id))
+                if bridge_record is None:
+                    # we've never sent this message, possibly because it was too long
+                    await self._send_queue.put(message)
+                elif not self.can_modify(bridge_record.received_at):
+                    await message.reply("Your edit was ignored because the edit window expired, sorry!")
+                else:
+                    await self.room.edit(bridge_record.se_message_id, new_content)
+            self._edit_queue.task_done()
+            
+    async def _send_task(self):
+        while True:
+            # new messages and edits share a ratelimit, so give edits priority
+            # since they're time-sensitive
+            await self._edit_queue.join()
+            message = await self._send_queue.get()
+            content = await self.convert_message(message)
+            if len(content) > 200 and content.count("\n") == 0:
+                await message.add_reaction("📏")
+            else:
+                se_message_id = await self.room.send(content)
+                await self.engine.save(BridgedMessage( # type: ignore
+                    se_message_id=se_message_id,
+                    discord_message_id=message.id,
+                    se_user_id=self.room.user_id,
+                    discord_user_id=self.client_id,
+                    received_at=datetime.now()
+                ))
+            self._send_queue.task_done()
+
+    async def _notification_task(self):
+        while True:
+            # give priority to user messages
+            await self._send_queue.join()
+            await self.room.send(*(await self.notification_queue.get()))
+    
+    async def _typing_task(self):
+        async with ClientSession() as session, session.ws_connect("wss://rydwolf.xyz/whos_typing") as connection:
+            await connection.send_str(f"bridge\n{self.room.room_id}")
+            while True:
+                async with self._typing_lock:
+                    now = datetime.now()
+                    names = []
+                    for id, last_typed in self._last_typed_at.items():
+                        if (now - last_typed).seconds <= 10:
+                            if (member := self.channel.guild.get_member(id)) is None:
+                                if (member := await self.channel.guild.fetch_member(id)) is None:
+                                    raise Exception(id)
+                            names.append(json.dumps(member.display_name))
+                    if len(names):
+                        await connection.send_str("\n" + "\n".join(names))
+                    else:
+                        await connection.send_str("")
+                await sleep(0.5)
 
     async def run(self):
-        async with TaskGroup() as group:
-            group.create_task(self.sendTask())
-            group.create_task(self.editTask())
-            group.create_task(self.deleteTask())
-            group.create_task(self.typing.run())
+        try:
+            async with TaskGroup() as group:
+                group.create_task(self._delete_task(), name=f"delete/{self.room.room_id}")
+                group.create_task(self._edit_task(), name=f"edit/{self.room.room_id}")
+                group.create_task(self._send_task(), name=f"send/{self.room.room_id}")
+                group.create_task(self._notification_task(), name=f"notification/{self.room.room_id}")
+                group.create_task(self._typing_task(), name=f"typing/{self.room.room_id}")
+        finally:
+            await self.room.close()

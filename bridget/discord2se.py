@@ -14,7 +14,7 @@ from bridget.chatifier import Chatifier
 from bridget.models import BridgedMessage
 
 class DiscordToSEForwarder:
-    max_message_length = 200
+    max_message_length = 500
 
     def __init__(self, room: Room, engine: AIOEngine, channel: TextChannel, client_id: int, role_symbols: dict[str, str], ignore: list[int]):
         self.room = room
@@ -133,7 +133,7 @@ class DiscordToSEForwarder:
             await self._edit_queue.join()
             message = await self._send_queue.get()
             content = await self.convert_message(message)
-            if len(content) > 200 and content.count("\n") == 0:
+            if len(content) > self.max_message_length and content.count("\n") == 0:
                 await message.add_reaction("📏")
             else:
                 se_message_id = await self.room.send(content)

@@ -51,7 +51,7 @@ class SEToDiscordForwarder:
             return
         if event.content.startswith("\u200d"):
             return
-        converted = self.converter.convert(BeautifulSoup(event.content, features="lxml"))
+        converted = self.converter.convert(BeautifulSoup(event.content, features="lxml").body) # type: ignore
         if converted is None:
             return
         pfp = await self.pfp_fetcher.fetch_pfp_url(event.user_id)

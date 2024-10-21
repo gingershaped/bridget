@@ -150,7 +150,7 @@ class BridgetClient(Client):
             url=resolve_chat_pfp(user["email_hash"])
         ).set_footer(
             text=user["site"]["caption"],
-            icon_url=Discordifier.fixUrl(user["site"]["icon"])
+            icon_url=Discordifier.fix_url(user["site"]["icon"])
         )
 
     async def user_list(self, interaction: Interaction):

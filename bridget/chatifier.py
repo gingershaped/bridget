@@ -9,19 +9,19 @@ class Chatifier:
     def __init__(self, guild: Guild):
         self.guild = guild
 
-    async def convertChildren(self, node: Node):
+    async def convert_children(self, node: Node):
         if node.children is None:
             return
         for child in node.children:
-            async for string in self.convertNode(child):
+            async for string in self.convert_node(child):
                 yield string
     async def wrap(self, node: Node, start: str, end: Optional[str] = None):
         yield start
-        async for string in self.convertChildren(node):
+        async for string in self.convert_children(node):
             yield string
         yield end if end is not None else start
 
-    async def convertNode(self, node: Node):
+    async def convert_node(self, node: Node):
         match node.node_type:
             case NodeType.TEXT:
                 assert node.text_content is not None
@@ -66,15 +66,15 @@ class Chatifier:
                 assert node.url is not None
                 yield node.url
             case NodeType.QUOTE_BLOCK:
-                for line in "".join([i async for i in self.convertChildren(node)]).splitlines(True):
+                for line in "".join([i async for i in self.convert_children(node)]).splitlines(True):
                     yield f"> {line}"
             case NodeType.CODE_BLOCK:
-                for line in "".join([i async for i in self.convertChildren(node)]).splitlines(True):
+                for line in "".join([i async for i in self.convert_children(node)]).splitlines(True):
                     yield f"    {line}"
 
     async def convert(self, message: str):
         nodes = parse(message)
         if len(nodes) == 1 and nodes[0].node_type in (NodeType.QUOTE_BLOCK, NodeType.CODE_BLOCK):
-            return "".join([i async for i in self.convertNode(nodes[0])])
+            return "".join([i async for i in self.convert_node(nodes[0])])
         else:
-            return "".join(chain(*[[i async for i in self.convertNode(node)] for node in nodes])).strip("\n")
+            return "".join(chain(*[[i async for i in self.convert_node(node)] for node in nodes])).strip("\n")

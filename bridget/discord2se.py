@@ -174,7 +174,7 @@ class DiscordToSEForwarder:
     async def _room_ws_task(self):
         # open a webhook connection so we stay in the room list
         async for event in self.room.events():
-            print(event)
+            pass
 
     async def run(self):
         try:

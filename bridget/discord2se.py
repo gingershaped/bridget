@@ -56,7 +56,7 @@ class DiscordToSEForwarder:
         return f"[{user.display_name}{symbols}]"
 
     async def convert_message(self, message: Message, note: str = ""):
-        assert isinstance(message.author, Member)
+        assert isinstance(message.author, Member), f"The author of message {message} ({message.author}) is not a member!"
         content = await self.converter.convert(message.content)
         if content.count("\n") == 0:
             if len(message.embeds) == 1:

@@ -1041,7 +1041,7 @@ docs = ["mkdocs (>=1.6.1,<2.0.0)", "mkdocs-material (>=9.5.42,<10.0.0)", "mkdocs
 type = "git"
 url = "https://github.com/gingershaped/sechat"
 reference = "v3"
-resolved_reference = "70d7e56f9aa2b636e0ee537d06b85f342936ac54"
+resolved_reference = "71c5d8d66498c3436c825ec9d8db0c615526e391"
 
 [[package]]
 name = "six"

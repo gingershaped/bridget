@@ -58,19 +58,16 @@ class SEToDiscordForwarder:
         # this isn't great
         if isinstance(converted, Embed):
             embeds = [converted]
-            content = MISSING
+            content = ""
         else:
             embeds = []
             content = converted
         view = MISSING
         if event.parent_id is not None and event.show_parent:
-            if (replied_message := await self.fetch_corresponding_message(event.parent_id)) is None:
-                embeds.append(await self.create_reply_embed(event.parent_id))
+            if (replied_message := await self.fetch_corresponding_message(event.parent_id)) is not None:
+                content = f"[⤷]({replied_message.jump_url}) {replied_message.author.mention} " + content
             else:
-                if content == MISSING:
-                    content = f"[⤷]({replied_message.jump_url})"
-                else:
-                    content = f"[⤷]({replied_message.jump_url}) " + content
+                embeds.append(await self.create_reply_embed(event.parent_id))
         if isinstance(event, EditEvent):
             message = await self.fetch_corresponding_message(event.message_id)
             if isinstance(message, WebhookMessage):

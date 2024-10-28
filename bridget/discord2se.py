@@ -5,7 +5,7 @@ from asyncio import Lock, Queue, TaskGroup, sleep
 
 
 from aiohttp import ClientSession
-from discord import Member, Message, Object, TextChannel
+from discord import Member, Message, Object, TextChannel, User
 from discord.utils import find
 from odmantic import AIOEngine
 from sechat import Room
@@ -44,21 +44,23 @@ class DiscordToSEForwarder:
         if (message := await self.engine.find_one(BridgedMessage, BridgedMessage.discord_message_id == discord_id)) is not None:
             return message
 
-    def format_display_name(self, user: Member):
+    def format_display_name(self, user: User | Member):
         # TODO: this is awful
         symbols = ""
         if user.bot:
             symbols += "⚙"
-        for role in user.roles:
-            symbols += self.role_symbols.get(str(role.id), "")
+        if isinstance(user, Member):
+            for role in user.roles:
+                symbols += self.role_symbols.get(str(role.id), "")
         if len(symbols):
             symbols = " " + symbols
         return f"[{user.display_name}{symbols}]"
 
     async def convert_message(self, message: Message, note: str = ""):
-        assert isinstance(message.author, Member), f"The author of message {message} ({message.author}) is not a member!"
         content = await self.converter.convert(message.content)
         if content.count("\n") == 0:
+            if message.poll is not None:
+                content += " <poll>"
             if len(message.embeds) == 1:
                 content += " <embed>"
             elif len(message.embeds) > 1:

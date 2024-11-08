@@ -51,6 +51,8 @@ class SEToDiscordForwarder:
             return
         if event.content.startswith("\u200d"):
             return
+        if event.user_name in ("everyone", "here"):
+            return
         converted = self.converter.convert(BeautifulSoup(event.content, features="lxml").body) # type: ignore
         if converted is None:
             return

@@ -6,7 +6,7 @@ from logging import getLogger
 
 from aiohttp import ClientSession
 from bs4 import BeautifulSoup, Tag
-from discord import Client, Color, Embed, Intents, Interaction, Member, Message, TextChannel, User, Webhook
+from discord import AllowedMentions, Client, Color, Embed, Intents, Interaction, Member, Message, TextChannel, User, Webhook
 from discord.abc import Messageable
 from discord.app_commands import CommandTree, Command, ContextMenu, Group
 from discord.utils import find, MISSING
@@ -33,6 +33,7 @@ class BridgetClient(Client):
         self.config = config
         self.logger = getLogger("DiscordClient")
         self.tree = CommandTree(self)
+        self.allowed_mentions = AllowedMentions(everyone=False, users=True, roles=False, replied_user=True)
         # self.tree.command(name="queued", description="Check number of queued messages")(self.que)
         # self.tree.context_menu(name="Message permalink")(self.messageLinkCommand)
         # self.tree.context_menu(name="User info")(self.userInfoCommand)

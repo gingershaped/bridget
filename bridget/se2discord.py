@@ -70,7 +70,7 @@ class SEToDiscordForwarder:
             content = re.sub(r"^@\S+", "", content)
             if (replied_message := await self.fetch_corresponding_message(event.parent_id)) is not None:
                 prefix = f"[⤷]({replied_message.jump_url}) "
-                if replied_message.author.id == self.webhook.id:
+                if replied_message.author.id != self.webhook.id:
                     prefix += f"{replied_message.author.mention} "
                 content = prefix + content
             else:

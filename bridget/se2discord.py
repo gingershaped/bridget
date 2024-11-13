@@ -1,5 +1,6 @@
 from asyncio import sleep
 from datetime import datetime
+import re
 
 from bs4 import BeautifulSoup, Tag
 from discord import (Embed, Forbidden, NotFound, TextChannel, Webhook,
@@ -66,8 +67,12 @@ class SEToDiscordForwarder:
             content = converted
         view = MISSING
         if event.parent_id is not None and event.show_parent:
+            content = re.sub(r"^@\S+", "", content)
             if (replied_message := await self.fetch_corresponding_message(event.parent_id)) is not None:
-                content = f"[⤷]({replied_message.jump_url}) {replied_message.author.mention} " + content
+                prefix = f"[⤷]({replied_message.jump_url}) "
+                if replied_message.author.id == self.webhook.id:
+                    prefix += f"{replied_message.author.mention} "
+                content = prefix + content
             else:
                 embeds.append(await self.create_reply_embed(event.parent_id))
         if isinstance(event, EditEvent):

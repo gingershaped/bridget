@@ -67,7 +67,7 @@ class SEToDiscordForwarder:
             content = converted
         view = MISSING
         if event.parent_id is not None and event.show_parent:
-            content = re.sub(r"^@\S+", "", content)
+            content = re.sub(r"^@\S+", "", content).strip()
             if (replied_message := await self.fetch_corresponding_message(event.parent_id)) is not None:
                 prefix = f"[⤷]({replied_message.jump_url}) "
                 if replied_message.author.id != self.webhook.id:

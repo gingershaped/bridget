@@ -42,16 +42,16 @@ class Chatifier:
                 assert node.discord_id is not None
                 member = await self.guild.fetch_member(node.discord_id)
                 if member is None:
-                    yield "`@<unknown user>`"
+                    yield "@!<unknown user>"
                 else:
-                    yield f"`@{member.display_name}`"
+                    yield f"@!{member.display_name}"
             case NodeType.ROLE:
                 assert node.discord_id is not None
                 role = self.guild.get_role(node.discord_id)
                 if role is None:
-                    yield "`@<unknown role>`"
+                    yield "@!<unknown role>"
                 else:
-                    yield f"`@{role.name}`"
+                    yield f"@!{role.name}"
             case NodeType.CHANNEL:
                 assert node.discord_id is not None
                 channel = await self.guild.fetch_channel(node.discord_id)

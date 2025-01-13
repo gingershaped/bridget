@@ -1,3 +1,4 @@
+from io import BytesIO
 import json
 from typing import TYPE_CHECKING
 from datetime import datetime
@@ -9,12 +10,14 @@ from discord import Member, Message, Object, TextChannel, User
 from discord.utils import find
 from odmantic import AIOEngine
 from sechat import Room
+from sechat.errors import OperationFailedError
 
 from bridget.chatifier import Chatifier
 from bridget.models import BridgedMessage
 
 class DiscordToSEForwarder:
     max_message_length = 500
+    supported_content_types = {"image/png", "image/jpeg", "image/webp", "image/bmp", "image/gif"}
 
     def __init__(self, room: Room, engine: AIOEngine, channel: TextChannel, client_id: int, role_symbols: dict[str, str], ignore: list[int]):
         self.room = room
@@ -66,7 +69,16 @@ class DiscordToSEForwarder:
             elif len(message.embeds) > 1:
                 content += f" <{len(message.embeds)} embeds>"
             for attachment in message.attachments:
-                content += f" [{attachment.filename}]({attachment.url})"
+                if attachment.content_type in self.supported_content_types:
+                    buffer = BytesIO(await attachment.read())
+                    try:
+                        url = await self.room.upload_image(buffer, attachment.filename)
+                    except OperationFailedError:
+                        content += f" `{attachment.filename}`"
+                    else:
+                        content += f" [{attachment.filename}]({url})"
+                else:
+                    content += f" `{attachment.filename}`"
         prefix = note + self.format_display_name(message.author)
         reply = ""
         if message.reference is not None and message.reference.message_id is not None:

@@ -773,13 +773,13 @@ files = [
 
 [[package]]
 name = "pydantic"
-version = "2.10.4"
+version = "2.10.5"
 description = "Data validation using Python type hints"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "pydantic-2.10.4-py3-none-any.whl", hash = "sha256:597e135ea68be3a37552fb524bc7d0d66dcf93d395acd93a00682f1efcb8ee3d"},
-    {file = "pydantic-2.10.4.tar.gz", hash = "sha256:82f12e9723da6de4fe2ba888b5971157b3be7ad914267dea8f05f82b28254f06"},
+    {file = "pydantic-2.10.5-py3-none-any.whl", hash = "sha256:4dd4e322dbe55472cb7ca7e73f4b63574eecccf2835ffa2af9021ce113c83c53"},
+    {file = "pydantic-2.10.5.tar.gz", hash = "sha256:278b38dbbaec562011d659ee05f63346951b3a248a6f3642e1bc68894ea2b4ff"},
 ]
 
 [package.dependencies]
@@ -989,7 +989,7 @@ name = "sechat"
 version = "3.0.0"
 description = "A BETTER Stack Exchange chat library."
 optional = false
-python-versions = ">=3.11.0,<4.0.0"
+python-versions = ">=3.12.0,<4.0.0"
 files = []
 develop = false
 
@@ -1008,7 +1008,7 @@ docs = ["mkdocs (>=1.6.1,<2.0.0)", "mkdocs-material (>=9.5.42,<10.0.0)", "mkdocs
 type = "git"
 url = "https://github.com/gingershaped/sechat"
 reference = "v3"
-resolved_reference = "863e58ab71827155772a07ccc074cf69ae87678b"
+resolved_reference = "0278924e663128c86c184a23352fdec1e8e67709"
 
 [[package]]
 name = "six"
@@ -1141,5 +1141,5 @@ propcache = ">=0.2.0"
 
 [metadata]
 lock-version = "2.0"
-python-versions = "^3.11"
-content-hash = "de74bbce5ee98c63c3e9c24966cfedaef3074a6e64aa89d441ff361de103479a"
+python-versions = "^3.12"
+content-hash = "15fadbadebadad3564847c43da1d58f13b9b1a7548ab729bd87bb0ae97560bde"

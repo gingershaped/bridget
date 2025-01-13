@@ -6,7 +6,7 @@ authors = ["Ginger <75683114+gingershaped@users.noreply.github.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.12"
 sechat = {git = "https://github.com/gingershaped/sechat", rev = "v3"}
 "discord.py" = "^2.3.2"
 bs4 = "^0.0.1"

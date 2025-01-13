@@ -16,7 +16,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from bridget.discord2se import DiscordToSEForwarder
 from bridget.discordifier import Discordifier
-from bridget.models import BridgedMessage, Configuration
+from bridget.models import BridgedMessage, Configuration, DualBridge, SingleBridge
 from bridget.se2discord import SEToDiscordForwarder
 from bridget.util import pretty_delta, resolve_chat_pfp
 
@@ -187,6 +187,30 @@ class BridgetClient(Client):
         else:
             await interaction.response.send_message(content="This channel is not bridged.", ephemeral=True)
 
+    async def run_one_way(self, config: SingleBridge, engine: AIOEngine, credentials: Credentials):
+        webhook = await Webhook.from_url(config["hook"], client=self).fetch()
+        assert webhook.channel is not None
+        forwarder = SEToDiscordForwarder(config["room"], [credentials.user_id], config["noembed"], webhook, engine)
+        async with TaskGroup() as group:
+            group.create_task(forwarder.run())
+            self.logger.info(f"Started one-way forwarder from room {config['room']} to channel {webhook.channel.name} in guild {webhook.channel.guild.name}")
+
+    async def run_two_way(self, config: DualBridge, engine: AIOEngine, credentials: Credentials):
+        channel = await self.fetch_channel(config["channel"])
+        assert isinstance(channel, TextChannel)
+        assert self.user is not None
+        if not isinstance(webhook := find(lambda webhook: webhook.user == self.user, await channel.webhooks()), Webhook):
+            webhook = await channel.create_webhook(name="Bridget", reason="Creating bridge webhook")
+        
+        async with Room.join(credentials, config["room"]) as room:
+            se_to_discord = SEToDiscordForwarder(room.room_id, [credentials.user_id], config.get("noembed", []), webhook, engine)
+            discord_to_se = DiscordToSEForwarder(room, engine, channel, self.user.id, config["roleIcons"], config["ignore"])
+            self.se_forwarders[channel] = discord_to_se
+            async with TaskGroup() as group:
+                group.create_task(se_to_discord.run())
+                group.create_task(discord_to_se.run())
+                self.logger.info(f"Started two-way forwarder between room {room.room_id} and channel {channel.name} in guild {channel.guild.name}")
+
 
     async def run(self) -> None:
         engine = AIOEngine(AsyncIOMotorClient(self.config["database"]["uri"]), self.config["database"]["name"])
@@ -196,26 +220,11 @@ class BridgetClient(Client):
         async with self, TaskGroup() as group:
             group.create_task(self.connect())
             await self.wait_until_ready()
-            assert self.user is not None
             
-            for one_way_config in self.config["single"]:
-                webhook = await Webhook.from_url(one_way_config["hook"], client=self).fetch()
-                assert webhook.channel is not None
-                forwarder = SEToDiscordForwarder(one_way_config["room"], [credentials.user_id], one_way_config["noembed"], webhook, engine)
-                group.create_task(forwarder.run())
-                self.logger.info(f"Started one-way forwarder from room {one_way_config['room']} to channel {webhook.channel.name} in guild {webhook.channel.guild.name}")
+            for config in self.config["single"]:
+                group.create_task(self.run_one_way(config, engine, credentials))
             
-            for two_way_config in self.config["dual"]:
-                channel = await self.fetch_channel(two_way_config["channel"])
-                assert isinstance(channel, TextChannel)
-                if not isinstance(webhook := find(lambda webhook: webhook.user == self.user, await channel.webhooks()), Webhook):
-                    webhook = await channel.create_webhook(name="Bridget", reason="Creating bridge webhook")
-                room = await Room.join(credentials, two_way_config["room"])
-                se_to_discord = SEToDiscordForwarder(room.room_id, [credentials.user_id], two_way_config.get("noembed", []), webhook, engine)
-                discord_to_se = DiscordToSEForwarder(room, engine, channel, self.user.id, two_way_config["roleIcons"], two_way_config["ignore"])
-                self.se_forwarders[channel] = discord_to_se
-                group.create_task(se_to_discord.run())
-                group.create_task(discord_to_se.run())
-                self.logger.info(f"Started two-way forwarder between room {room.room_id} and channel {channel.name} in guild {channel.guild.name}")
+            for config in self.config["dual"]:
+                group.create_task(self.run_two_way(config, engine, credentials))
 
             self.logger.info("Forwarders started.")

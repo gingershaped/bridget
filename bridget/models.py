@@ -1,7 +1,8 @@
-from typing import TypedDict, Optional
 from datetime import datetime
+from typing import TypedDict
 
 from odmantic import Field, Model
+
 
 class BridgedMessage(Model):
     se_message_id: int = Field(primary_field=True)

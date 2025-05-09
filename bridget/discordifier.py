@@ -1,15 +1,17 @@
-from dataclasses import dataclass
 from datetime import datetime
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from urllib.parse import urlsplit, urlunsplit
 
+from bs4 import Tag
 from discord import Embed
 from markdownify import MarkdownConverter, chomp
-from bs4 import BeautifulSoup, PageElement, Tag, NavigableString
+
+if TYPE_CHECKING:
+    from bs4._typing import _AttributeValue  # type: ignore
 
 class PatchedConverter(MarkdownConverter):
     convert_strike = MarkdownConverter.convert_s
-    def convert_a(self, el, text, convert_as_inline):
+    def convert_a(self, el, text, parent_tags):
         # hacky spoiler converter
         # matches links where the title is "spoiler"
         # or the address is http(s)://spoiler
@@ -20,15 +22,16 @@ class PatchedConverter(MarkdownConverter):
         title = el.get("title")
         if text == "spoiler" or urlsplit(href).netloc == "spoiler":
             return f"||{title}||"
-        return super().convert_a(el, text, convert_as_inline)
+        return super().convert_a(el, text, parent_tags)
 
 class Discordifier:
     def __init__(self):
         self.converter = PatchedConverter()
 
     @classmethod
-    def fix_url(cls, url: str):
+    def fix_url(cls, url: _AttributeValue):
         # Screw with URLs to make them work outside of a browser
+        assert isinstance(url, str)
         scheme, netloc, path, query, fragment = urlsplit(url)
         if not scheme:
             scheme = "https"
@@ -92,7 +95,7 @@ class Discordifier:
                 name=user_name.text,
                 url=self.fix_url(message_permalink.attrs["href"])
             )
-            embed.timestamp = datetime.fromisoformat(timestamp.attrs["title"].strip())
+            embed.timestamp = datetime.fromisoformat(cast(str, timestamp.attrs["title"]).strip())
             return embed
         elif "ob-youtube" in div["class"]:
             # YT onebox
@@ -151,8 +154,9 @@ class Discordifier:
         # patch all links
         # (magic links use bare URLs for some reason)
         for a in element.find_all("a"):
+            assert isinstance(a, Tag)
             a.attrs["href"] = self.fix_url(a.attrs["href"])
-        return self.converter.process_tag(element, False, False)
+        return self.converter.process_tag(element)
 
     def convert(self, body: Tag):
         if isinstance(div := body.find(class_="full", recursive=False), Tag):

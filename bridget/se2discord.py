@@ -1,8 +1,7 @@
-from asyncio import sleep
-from datetime import datetime
 import re
+from datetime import datetime
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
 from discord import (Embed, Forbidden, NotFound, TextChannel, Webhook,
                      WebhookMessage)
 from discord.utils import MISSING

@@ -29,7 +29,7 @@ class Discordifier:
         self.converter = PatchedConverter()
 
     @classmethod
-    def fix_url(cls, url: _AttributeValue):
+    def fix_url(cls, url: "_AttributeValue"):
         # Screw with URLs to make them work outside of a browser
         assert isinstance(url, str)
         scheme, netloc, path, query, fragment = urlsplit(url)

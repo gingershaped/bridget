@@ -130,7 +130,7 @@ class BridgetClient(Client):
                 url=f"https://chat.stackexchange.com/rooms/{forwarder.room.room_id}",
             ).add_field(
                 name="In room", value=", ".join(
-                    f"[{user['name']}](https://chat.stackexchange.com/user/{user['id']})" for user in users
+                    f"[{user['name']}](https://chat.stackexchange.com/users/{user['id']})" for user in users
                 )
             ), ephemeral=True)
         else:

@@ -13,7 +13,7 @@ bs4 = "^0.0.2"
 markdownify = "^1.1.0"
 odmantic = "^1.0.2"
 discord-markdown-ast-parser = "^1.0.6"
-lxml = "^5.1.0"
+lxml = "^6.0.0"
 motor = "^3.6.0"
 
 

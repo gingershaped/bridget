@@ -8,7 +8,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
 sechat = {git = "https://github.com/gingershaped/sechat", rev = "v3"}
-"discord.py" = "^2.6.2"
+"discord.py" = "^2.6.3"
 bs4 = "^0.0.2"
 markdownify = "^1.2.0"
 odmantic = "^1.0.2"

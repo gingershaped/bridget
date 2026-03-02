@@ -266,14 +266,14 @@ files = [
 
 [[package]]
 name = "discord-py"
-version = "2.6.4"
+version = "2.7.0"
 description = "A Python wrapper for the Discord API"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "discord_py-2.6.4-py3-none-any.whl", hash = "sha256:2783b7fb7f8affa26847bfc025144652c294e8fe6e0f8877c67ed895749eb227"},
-    {file = "discord_py-2.6.4.tar.gz", hash = "sha256:44384920bae9b7a073df64ae9b14c8cf85f9274b5ad5d1d07bd5a67539de2da9"},
+    {file = "discord_py-2.7.0-py3-none-any.whl", hash = "sha256:6abe8392d8127213b02ef714be41f843dd053775500bb2e7c596abb77e802b9b"},
+    {file = "discord_py-2.7.0.tar.gz", hash = "sha256:b40a36fd09232c958cef0640c7830f3cdc9b1d476e63355b91728576ac7dd1ba"},
 ]
 
 [package.dependencies]
@@ -284,7 +284,7 @@ dev = ["ruff (==0.12)", "typing_extensions (>=4.3,<5)"]
 docs = ["imghdr-lts (==1.0.0) ; python_version >= \"3.13\"", "sphinx (==4.4.0)", "sphinx-inline-tabs (==2023.4.21)", "sphinxcontrib-applehelp (==1.0.4)", "sphinxcontrib-devhelp (==1.0.2)", "sphinxcontrib-htmlhelp (==2.0.1)", "sphinxcontrib-jsmath (==1.0.1)", "sphinxcontrib-qthelp (==1.0.3)", "sphinxcontrib-serializinghtml (==1.1.5)", "sphinxcontrib-websupport (==1.2.4)", "sphinxcontrib_trio (==1.1.2)", "typing-extensions (>=4.3,<5)"]
 speed = ["Brotli", "aiodns (>=1.1) ; sys_platform != \"win32\"", "cchardet (==2.1.7) ; python_version < \"3.10\"", "orjson (>=3.5.4)", "zstandard (>=0.23.0) ; python_version <= \"3.13\""]
 test = ["coverage[toml]", "pytest", "pytest-asyncio", "pytest-cov", "pytest-mock", "typing-extensions (>=4.3,<5)", "tzdata ; sys_platform == \"win32\""]
-voice = ["PyNaCl (>=1.5.0,<1.6)"]
+voice = ["PyNaCl (>=1.5.0,<1.6)", "davey (==0.1.0)"]
 
 [[package]]
 name = "dnspython"
@@ -755,14 +755,14 @@ files = [
 
 [[package]]
 name = "odmantic"
-version = "1.0.2"
-description = "ODMantic, an AsyncIO MongoDB Object Document Mapper for Python using type hints"
+version = "1.1.0"
+description = "ODMantic, an AsyncIO MongoDB Object Document Mapper for Python using type hints "
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "odmantic-1.0.2-py3-none-any.whl", hash = "sha256:0475c763687624b70ba4d52266a7d0bdfb74dda7ec40162669334e9d41c06049"},
-    {file = "odmantic-1.0.2.tar.gz", hash = "sha256:bbd0d46bc920e0e6d966d9f3add7396bc92377d2c73860d071d5ca8102f57235"},
+    {file = "odmantic-1.1.0-py3-none-any.whl", hash = "sha256:01a851c2558e7cde69e292a54fd7b2d5cbc03b7af88b4f3a841d51c79274d159"},
+    {file = "odmantic-1.1.0.tar.gz", hash = "sha256:70a1cfa7211870cd3d7eacf5a3fd99db29d6b333a33c77dcaa13330d003e2982"},
 ]
 
 [package.dependencies]
@@ -771,11 +771,11 @@ pydantic = ">=2.5.2"
 pymongo = ">=4.1.0"
 
 [package.extras]
-dev = ["ipython (>=7.16.1,<7.17.0)", "semver (>=2.13.0,<2.14.0)", "typer (>=0.4.1,<0.5.0)"]
-doc = ["mkdocs-macros-plugin (>=1.0.4,<1.1.0)", "mkdocs-material (>=9.5.2,<9.6.0)", "mkdocstrings[python] (>=0.24.0,<0.25.0)", "pydocstyle[toml] (>=6.3.0,<6.4.0)"]
+dev = ["ipython (>=7.16.1)"]
+doc = ["griffe (<1.0)", "mkdocs-macros-plugin (>=1.0.4)", "mkdocs-material (>=9.5.2)", "mkdocstrings[python] (>=0.18)", "pydocstyle[toml] (>=6.3.0)"]
 fastapi = ["fastapi (>=0.100.0)"]
-lint = ["mypy (>=1.4.1,<1.5.0)", "ruff (>=0.3.3,<0.4.0)"]
-test = ["async-asgi-testclient (>=1.4.11,<1.5.0)", "asyncmock (>=0.4.2,<0.5.0)", "coverage[toml] (>=6.2,<7.0)", "darglint (>=1.8.1,<1.9.0)", "fastapi (>=0.104.0)", "httpx (>=0.24.1,<0.25.0)", "inline-snapshot (>=0.6.0,<0.7.0)", "pytest (>=7.0,<8.0)", "pytest-asyncio (>=0.16.0,<0.17.0)", "pytest-benchmark (>=4.0.0,<4.1.0)", "pytest-codspeed (>=2.1.0,<2.2.0)", "pytest-sugar (>=0.9.5,<0.10.0)", "pytest-xdist (>=2.1.0,<2.2.0)", "pytz (>=2023.3,<2024.0)", "requests (>=2.24,<3.0)", "types-pytz (>=2023.3.0.0,<2023.4.0.0)", "uvicorn (>=0.17.0,<0.18.0)"]
+lint = ["mypy (>=1.4.1)", "ruff (>=0.3.3)"]
+test = ["async-asgi-testclient (>=1.4.11)", "asyncmock (>=0.4.2)", "coverage[toml] (>=6.2)", "darglint (>=1.8.1)", "fastapi (>=0.104.0,<0.109)", "httpx (>=0.24.1,<0.28)", "inline-snapshot (>=0.6.0)", "pytest (>=7.0)", "pytest-asyncio (>=0.16.0)", "pytest-benchmark (>=4.0.0)", "pytest-codspeed (>=2.1.0)", "pytest-sugar (>=0.9.5)", "pytest-xdist (>=2.1.0)", "pytz (>=2023.3)", "requests (>=2.24)", "types-pytz (>=2023.3.0.0)", "uvicorn (>=0.17.0)"]
 
 [[package]]
 name = "propcache"
@@ -1299,4 +1299,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.13"
-content-hash = "36944c2c640e1987fa104a85ea4736d464ed5dbd106cd2d46c943107ba538053"
+content-hash = "e96415abdd33a420f89d87c0bc89993811aeb8b4e440836929c591e9c86175d5"
